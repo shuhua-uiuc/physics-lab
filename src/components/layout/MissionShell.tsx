@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   BookOpen,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
+import { useUIStore } from '@/store/uiStore';
 import { cn } from '@/lib/utils';
 
 interface MissionShellProps {
@@ -59,24 +60,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'market', label: 'Research Marketplace', icon: ShoppingCart, to: '/recruit/market' },
   { id: 'league', label: 'Research League', icon: Trophy, to: '/coins' },
   { id: 'achievement', label: 'Achievement Hall', icon: Medal, to: '/showcase' },
-];
-
-interface ToastItem {
-  id: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  msg: string;
-}
-
-const DEFAULT_TOASTS: ToastItem[] = [
-  { id: 't1', type: 'success', msg: '「磁悬浮实验」项目完成度 +15%，继续加油！' },
-  { id: 't2', type: 'info', msg: '爱因斯坦脑洞组 向你发起了挑战邀请' },
-  { id: 't3', type: 'warning', msg: '安全认证即将过期，建议本周内完成复核' },
-  { id: 't4', type: 'success', msg: '+180⚡ 能量币到账，来自挑战大厅结算' },
-];
-
-const TEACHER_TOASTS: ToastItem[] = [
-  { id: 't1', type: 'success', msg: '「磁悬浮实验」项目完成度 +15%，继续加油！' },
-  { id: 't3', type: 'warning', msg: '安全认证即将过期，建议本周内完成复核' },
 ];
 
 function RequireAuth({ children, allowRoles }: { children: ReactNode; allowRoles?: Array<'student' | 'teacher' | 'admin'> }) {
@@ -355,12 +338,21 @@ function NavRail() {
 }
 
 function ToastStack() {
-  const { role } = useAuthStore();
-  const [toasts, setToasts] = useState<ToastItem[]>(
-    role === 'teacher' || role === 'admin' ? TEACHER_TOASTS : DEFAULT_TOASTS
-  );
+  const { toasts, removeToast, clearToasts } = useUIStore();
   const [isOpen, setIsOpen] = useState(true);
   const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
+  const prevCountRef = useRef(toasts.length);
+
+  // 新通知到达时自动弹出面板（如转账成功提醒），5 秒后自动收起
+  useEffect(() => {
+    if (toasts.length > prevCountRef.current) {
+      setIsOpen(true);
+      const timer = setTimeout(() => setIsOpen(false), 5000);
+      prevCountRef.current = toasts.length;
+      return () => clearTimeout(timer);
+    }
+    prevCountRef.current = toasts.length;
+  }, [toasts.length]);
 
   useEffect(() => {
     if (toasts.length > 0 && !hasAutoCollapsed) {
@@ -372,16 +364,12 @@ function ToastStack() {
     }
   }, [toasts.length, hasAutoCollapsed]);
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
   const toggleToasts = () => {
     setIsOpen(!isOpen);
   };
 
   const markAllRead = () => {
-    setToasts([]);
+    clearToasts();
     setIsOpen(false);
   };
 

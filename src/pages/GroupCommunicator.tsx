@@ -182,22 +182,24 @@ function TransferHistoryItem({ tx }: { tx: any }) {
   
   const sourceLabels: Record<string, string> = {
     challenge: '挑战奖励',
-    recruitment: '招募报酬',
+    recruit: '招募报酬',
     project: '项目结算',
-    transfer: '转账',
-    admin: '管理员调整',
+    transfer: '组间转账',
+    teacher_set: '教师发放',
+    penalty: '教师扣罚',
   };
-  
+
   return (
     <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-white/95 to-ink-50/50 border border-ink-100/40 hover:bg-white hover:border-nova-100/60 transition-all duration-200">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
         tx.delta >= 0 ? 'bg-lab-100' : 'bg-danger-100'
       }`}>
         {tx.source === 'challenge' && <Swords size={18} className="text-energy-500" />}
-        {tx.source === 'recruitment' && <Users size={18} className="text-physics-500" />}
+        {tx.source === 'recruit' && <Users size={18} className="text-physics-500" />}
         {tx.source === 'project' && <Trophy size={18} className="text-lab-500" />}
         {tx.source === 'transfer' && <Coins size={18} className="text-energy-500" />}
-        {tx.source === 'admin' && <Award size={18} className="text-alert-500" />}
+        {tx.source === 'teacher_set' && <Award size={18} className="text-alert-500" />}
+        {tx.source === 'penalty' && <AlertCircle size={18} className="text-danger-500" />}
       </div>
       <div className="flex-1">
         <p className="font-medium text-ink-800 text-sm">{tx.note || sourceLabels[tx.source]}</p>
@@ -586,7 +588,27 @@ export default function GroupCommunicator() {
                 发起转账
               </button>
             </div>
-            
+
+            <div className="rounded-[24px] bg-gradient-to-br from-nova-50/70 via-white/90 to-mission-50/50 border border-nova-100/50 p-6">
+              <h3 className="font-serif font-semibold text-physics-800 mb-1 flex items-center gap-2">
+                <Coins size={18} className="text-nova-500" />
+                能量币流水
+              </h3>
+              <p className="text-xs text-ink-500 mb-4">本组全部收支记录（含组间转账、挑战、招募、项目结算）</p>
+              {coinTxs.length === 0 ? (
+                <div className="text-center py-8 text-ink-400">
+                  <Coins size={32} className="mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">暂无交易记录</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {coinTxs.slice().reverse().slice(0, 10).map((tx) => (
+                    <TransferHistoryItem key={tx.id} tx={tx} />
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="rounded-[24px] bg-gradient-to-br from-energy-50/70 via-white/90 to-alert-50/50 border border-energy-100/50 p-6">
               <h3 className="font-serif font-semibold text-physics-800 mb-4 flex items-center gap-2">
                 <Send size={18} className="text-energy-500" />
@@ -630,25 +652,7 @@ export default function GroupCommunicator() {
                 ))}
               </div>
             </div>
-            
-            <div className="rounded-[24px] bg-gradient-to-br from-nova-50/70 via-white/90 to-mission-50/50 border border-nova-100/50 p-6">
-              <h3 className="font-serif font-semibold text-physics-800 mb-4 flex items-center gap-2">
-                <Coins size={18} className="text-nova-500" />
-                最近交易记录
-              </h3>
-              {coinTxs.length === 0 ? (
-                <div className="text-center py-8 text-ink-400">
-                  <Coins size={32} className="mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">暂无交易记录</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {coinTxs.slice().reverse().slice(0, 10).map((tx) => (
-                    <TransferHistoryItem key={tx.id} tx={tx} />
-                  ))}
-                </div>
-              )}
-            </div>
+
           </div>
         )}
       </div>
