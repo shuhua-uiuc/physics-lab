@@ -8,6 +8,7 @@ from ..models import ClassMeta, CoinTransaction, Group, User
 from ..schemas import (
     ClassMetaOut,
     CoinDelta,
+    CoinTransfer,
     GroupRankRow,
     PersonalRankRow,
     RankingsOut,
@@ -84,6 +85,52 @@ def teacher_adjust_coins(
     )
     db.commit()
     return {"balanceAfter": tx.balance_after}
+
+
+@router.post("/coins/transfer")
+def transfer_coins(
+    payload: CoinTransfer,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """组间能量币转账（学生发起，后端原子记账，收支两笔共享同一 refId）。"""
+    if payload.source_group_id == payload.target_group_id:
+        raise HTTPException(status_code=400, detail="不能转账给自己小组")
+    src = db.get(Group, payload.source_group_id)
+    tgt = db.get(Group, payload.target_group_id)
+    if not src or not tgt:
+        raise HTTPException(status_code=404, detail="小组不存在")
+    # 学生只能从自己所在小组转出；教师/管理员可代任意小组操作
+    if user.account_role == "student" and user.group_id != src.id:
+        raise HTTPException(status_code=403, detail="只能从自己所在小组转出")
+    if src.total_coins < payload.amount:
+        raise HTTPException(status_code=400, detail="小组能量币不足")
+
+    ref_id = services.gen_id("tr_")
+    note = payload.note.strip()
+    tx_out = services.add_tx(
+        db,
+        src.id,
+        source="transfer",
+        ref_id=ref_id,
+        delta=-payload.amount,
+        note=f"转账给「{tgt.name}」" + (f"：{note}" if note else ""),
+        user_id=user.id,
+    )
+    tx_in = services.add_tx(
+        db,
+        tgt.id,
+        source="transfer",
+        ref_id=ref_id,
+        delta=payload.amount,
+        note=f"收到「{src.name}」转账" + (f"：{note}" if note else ""),
+    )
+    db.commit()
+    return {
+        "refId": ref_id,
+        "sourceBalanceAfter": tx_out.balance_after,
+        "targetBalanceAfter": tx_in.balance_after,
+    }
 
 
 @router.get("/class-meta", response_model=ClassMetaOut)

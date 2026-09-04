@@ -127,6 +127,7 @@ const SOURCE_CONFIG: Record<CoinSource, { label: string; chip: string; icon: any
   recruit: { label: '招募', chip: 'chip-energy', icon: Users },
   teacher_set: { label: '教师发放', chip: 'chip-mission', icon: ArrowRightLeft },
   penalty: { label: '扣罚', chip: 'chip-danger', icon: XCircle },
+  transfer: { label: '组间转账', chip: 'chip-nova', icon: ArrowRightLeft },
 };
 
 function SwordsIcon(props: any) {

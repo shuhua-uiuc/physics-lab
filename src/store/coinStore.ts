@@ -10,6 +10,8 @@ import {
   saveLS,
 } from '../data/mockData';
 import { useGroupStore } from './groupStore';
+import { syncToApi } from '../lib/syncQueue';
+import { coinsApi } from '../lib/apiService';
 
 /**
  * 能量币 store。
@@ -20,6 +22,7 @@ import { useGroupStore } from './groupStore';
  *       · 挑战结算 → POST /challenges/{id}/submit（后端 settle_challenge）
  *       · 招募结算 → PUT /recruitments/{id}/resolve（后端 settle_recruitment）
  *       · 项目完成 → POST /projects/{id}/done（后端 settle_project_done）
+ *       · 组间转账 → transferCoins → POST /coins/transfer（后端原子记账，收支共享 refId）
  *   - 因此本 store 的 addTx / settleXxx 仅做“本地乐观更新”，用于即时展示流水，
  *     不再单独向后端推送交易；下次 bootstrapFromApi 重拉时以后端为准对齐。
  */
@@ -41,6 +44,14 @@ interface CoinState {
     result: 'success' | 'partial' | 'fail'
   ) => { assigneePay: number; ownerRefund: number };
   settleProjectDone: (project: Project) => Record<string, number>;
+  /** 组间能量币转账：本地乐观更新 + 后端原子记账（source='transfer'，收支共享 refId）。 */
+  transferCoins: (
+    fromGroupId: string,
+    toGroupId: string,
+    amount: number,
+    note: string,
+    userId?: string
+  ) => void;
   getRankings: () => {
     groupRanking: { groupId: string; name: string; totalCoins: number; rank: number }[];
     personalRanking: { userId: string; name: string; personalCoins: number; groupId: string; rank: number }[];
@@ -76,6 +87,55 @@ export const useCoinStore = create<CoinState>((set, get) => {
       persist(nextTxs);
       set({ coinTxs: nextTxs });
       return newTx;
+    },
+
+    transferCoins: (fromGroupId, toGroupId, amount, note, userId) => {
+      const { adjustGroupCoinsLocal, getGroupById } = useGroupStore.getState();
+      const fromGroup = getGroupById(fromGroupId);
+      const toGroup = getGroupById(toGroupId);
+      const refId = uid();
+
+      // 本地乐观更新：余额变更不走 updateGroupCoins（避免触发教师端点同步造成重复记账）
+      const fromBalance = adjustGroupCoinsLocal(fromGroupId, -amount);
+      const toBalance = adjustGroupCoinsLocal(toGroupId, amount);
+
+      const trimmedNote = note.trim();
+      const txOut: CoinTransaction = {
+        id: uid(),
+        groupId: fromGroupId,
+        userId,
+        source: 'transfer',
+        refId,
+        delta: -amount,
+        balanceAfter: fromBalance,
+        createdAt: new Date(),
+        note: `转账给${toGroup?.name ?? toGroupId}${trimmedNote ? `：${trimmedNote}` : ''}`,
+      };
+      const txIn: CoinTransaction = {
+        id: uid(),
+        groupId: toGroupId,
+        source: 'transfer',
+        refId,
+        delta: amount,
+        balanceAfter: toBalance,
+        createdAt: new Date(),
+        note: `收到${fromGroup?.name ?? fromGroupId}转账${trimmedNote ? `：${trimmedNote}` : ''}`,
+      };
+      const nextTxs = [...get().coinTxs, txOut, txIn];
+      persist(nextTxs);
+      set({ coinTxs: nextTxs });
+
+      // 后端原子记账：余额校验、两笔流水均由后端完成
+      syncToApi(
+        () =>
+          coinsApi.transfer({
+            sourceGroupId: fromGroupId,
+            targetGroupId: toGroupId,
+            amount,
+            note: trimmedNote,
+          }),
+        'coins.transfer'
+      );
     },
 
     settleChallenge: (challenge, solverGroupId, accuracy) => {

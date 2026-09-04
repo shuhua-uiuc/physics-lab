@@ -25,6 +25,8 @@ interface GroupState {
   joinGroup: (userId: string, groupId: string) => Promise<void>;
   updateContributionRatio: (groupId: string, ratioRecord: Record<string, number>) => void;
   updateGroupCoins: (groupId: string, delta: number) => number;
+  /** 仅本地余额变更，不触发后端同步（用于转账等由后端业务端点统一记账的场景）。 */
+  adjustGroupCoinsLocal: (groupId: string, delta: number) => number;
   updateUserPersonalCoins: (userId: string, delta: number) => void;
   updateUserAvatar: (userId: string, avatar: string) => void;
   getGroupUsers: (groupId: string) => User[];
@@ -167,6 +169,21 @@ export const useGroupStore = create<GroupState>((set, get) => {
       persistAll(nextGroups, users, classMeta);
       set({ groups: nextGroups });
       syncToApi(() => groupsApi.adjustCoins(groupId, delta), 'groups.adjustCoins');
+      return newBalance;
+    },
+
+    adjustGroupCoinsLocal: (groupId, delta) => {
+      const { groups, users, classMeta } = get();
+      let newBalance = 0;
+      const nextGroups = groups.map((g) => {
+        if (g.id === groupId) {
+          newBalance = g.totalCoins + delta;
+          return { ...g, totalCoins: newBalance };
+        }
+        return g;
+      });
+      persistAll(nextGroups, users, classMeta);
+      set({ groups: nextGroups });
       return newBalance;
     },
 

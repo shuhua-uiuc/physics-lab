@@ -218,7 +218,7 @@ export default function GroupCommunicator() {
   const { groups, getGroupById, getGroupUsers, updateGroupCoins } = useGroupStore();
   const { challenges, createChallenge, getTopicQuestions, topics } = useTheoryStore();
   const { recruitments, projects, placeBid, assignRecruitment, resolveRecruitment } = useProjectStore();
-  const { addTx, coinTxs } = useCoinStore();
+  const { addTx, coinTxs, transferCoins } = useCoinStore();
   const pushToast = useUIStore((s) => s.pushToast);
   
   const [tab, setTab] = useState<TabKey>('challenges');
@@ -321,24 +321,15 @@ export default function GroupCommunicator() {
     if (transferForm.targetGroupId === groupId) return pushToast('不能转账给自己', 'warning');
     if (transferForm.amount <= 0) return pushToast('转账金额必须大于0', 'warning');
     if (myCoins < transferForm.amount) return pushToast('能量币不足', 'warning');
-    
-    updateGroupCoins(groupId, -transferForm.amount);
-    updateGroupCoins(transferForm.targetGroupId, transferForm.amount);
-    
-    addTx(groupId, {
-      source: 'teacher_set',
-      refId: `tx_${Date.now()}`,
-      delta: -transferForm.amount,
-      note: `转账给${getGroupById(transferForm.targetGroupId)?.name}${transferForm.note ? `: ${transferForm.note}` : ''}`,
-    }, userId);
-    
-    addTx(transferForm.targetGroupId, {
-      source: 'teacher_set',
-      refId: `tx_${Date.now()}`,
-      delta: transferForm.amount,
-      note: `收到${myGroup?.name}转账${transferForm.note ? `: ${transferForm.note}` : ''}`,
-    });
-    
+
+    transferCoins(
+      groupId,
+      transferForm.targetGroupId,
+      transferForm.amount,
+      transferForm.note,
+      userId
+    );
+
     pushToast('转账成功！', 'success');
     setActiveDialog(null);
     setTransferForm({ targetGroupId: '', amount: 0, note: '' });

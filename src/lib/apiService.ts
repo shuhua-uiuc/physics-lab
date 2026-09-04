@@ -174,4 +174,9 @@ export const coinsApi = {
   rankings: () =>
     api.get<{ groupRanking: GroupRankRow[]; personalRanking: PersonalRankRow[] }>('/api/rankings'),
   classMeta: () => api.get<ClassMeta>('/api/class-meta'),
+  transfer: (payload: { sourceGroupId: string; targetGroupId: string; amount: number; note?: string }) =>
+    api.post<{ refId: string; sourceBalanceAfter: number; targetBalanceAfter: number }>(
+      '/api/coins/transfer',
+      payload
+    ),
 };
