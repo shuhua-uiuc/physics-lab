@@ -88,7 +88,11 @@ export async function bootstrapFromApi(force = false): Promise<void> {
     });
 
     useCoinStore.setState({
-      coinTxs: reviveDates(coinTxs, ['createdAt']),
+      // 后端返回最新在前，这里归一化为时间正序（与离线模式的追加顺序一致），
+      // 避免依赖数组顺序的展示逻辑（如 reverse+slice）取错区间
+      coinTxs: reviveDates(coinTxs, ['createdAt']).sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      ),
     });
 
     loaded = true;

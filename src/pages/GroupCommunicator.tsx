@@ -602,9 +602,12 @@ export default function GroupCommunicator() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {coinTxs.slice().reverse().slice(0, 10).map((tx) => (
-                    <TransferHistoryItem key={tx.id} tx={tx} />
-                  ))}
+                  {[...coinTxs]
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .slice(0, 10)
+                    .map((tx) => (
+                      <TransferHistoryItem key={tx.id} tx={tx} />
+                    ))}
                 </div>
               )}
             </div>
