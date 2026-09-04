@@ -71,7 +71,7 @@ export default function Login() {
   // 学生入口内的子模式：login（选组登录）/ register（邮箱+用户名注册）
   const [studentMode, setStudentMode] = useState<'login' | 'register'>('login');
   const [teacherUsername, setTeacherUsername] = useState('teacher');
-  const [teacherPwd, setTeacherPwd] = useState('admin123');
+  const [teacherPwd, setTeacherPwd] = useState('');
   const [teacherErr, setTeacherErr] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -119,7 +119,11 @@ export default function Login() {
 
   const handleTeacherLogin = async () => {
     const username = teacherUsername.trim() || 'teacher';
-    const candidate = teacherPwd.trim() || 'admin123';
+    const candidate = teacherPwd.trim();
+    if (!candidate) {
+      setTeacherErr('请输入教师密码');
+      return;
+    }
     if (apiEnabled) {
       setSubmitting(true);
       try {
