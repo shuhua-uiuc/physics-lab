@@ -1,0 +1,372 @@
+import { create } from 'zustand';
+import {
+  Project,
+  ProjectStatus,
+  Recruitment,
+  RecruitmentBid,
+  ShowcaseItem,
+  SafetyCategory,
+  EquipmentItem,
+  LS_KEYS,
+  loadLS,
+  saveLS,
+} from '../data/mockData';
+import { useCoinStore } from './coinStore';
+import { useGroupStore } from './groupStore';
+import { projectsApi, recruitmentsApi, showcaseApi, groupsApi, usersApi, coinsApi } from '../lib/apiService';
+import { syncToApi } from '../lib/syncQueue';
+import { reviveDates } from '../lib/reviveDates';
+
+type PartialProject = Partial<Project> & {
+  title: string;
+  topic: string;
+  ownerGroupId: string;
+};
+
+type PartialRecruitment = Partial<Recruitment> & {
+  projectId: string;
+  title: string;
+  description: string;
+  reward: number;
+  deadline: Date;
+};
+
+type PartialShowcaseItem = Partial<ShowcaseItem> & {
+  title: string;
+  coverImage: string;
+  groupId: string;
+};
+
+interface ProjectState {
+  projects: Project[];
+  recruitments: Recruitment[];
+  showcaseItems: ShowcaseItem[];
+  createProject: (partial: PartialProject) => Project;
+  updateStatus: (id: string, status: ProjectStatus) => void;
+  setProgress: (id: string, progressVal: number) => void;
+  markProjectDone: (id: string) => void;
+  createRecruitment: (partial: PartialRecruitment) => Recruitment;
+  placeBid: (recruitmentId: string, bid: Omit<RecruitmentBid, 'bidAt'>) => void;
+  assignRecruitment: (recruitmentId: string, userId: string) => void;
+  resolveRecruitment: (
+    recruitmentId: string,
+    result: 'success' | 'partial' | 'fail'
+  ) => void;
+  markSafetyPass: (projectId: string, userId: string) => void;
+  addShowcaseItem: (item: PartialShowcaseItem) => ShowcaseItem;
+  toggleShowcaseLove: (showcaseId: string, userId: any) => void;
+  getProjectById: (projectId: string) => Project | undefined;
+  getRecruitmentsByProject: (projectId: string) => Recruitment[];
+}
+
+const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+// 后端重拉后的日期反序列化包装（camelCase 字段与前端类型对齐）。
+const reviveProjectDates = (items: Project[]) =>
+  reviveDates(items, ['startDate', 'dueDate']);
+const reviveRecruitmentDates = (items: Recruitment[]) =>
+  reviveDates(items, ['deadline']);
+const reviveShowcaseDates = (items: ShowcaseItem[]) =>
+  reviveDates(items, ['createdAt']);
+
+/**
+ * 结算类操作（项目完成 / 招募裁决）后，后端已改动小组余额、个人币与交易流水。
+ * 这里重拉这些数据并注入 group/coin store，纠正本地乐观结算与后端的差异。
+ */
+async function refetchAfterSettlement(): Promise<void> {
+  const [groups, users, coinTxs] = await Promise.all([
+    groupsApi.list(),
+    usersApi.list(),
+    coinsApi.transactions() as Promise<any[]>,
+  ]);
+  useGroupStore.setState({ groups, users });
+  useCoinStore.setState({ coinTxs: reviveDates(coinTxs, ['createdAt']) });
+}
+
+const inferSafetyCategory = (equipmentList: EquipmentItem[]): SafetyCategory => {
+  const cats = new Set(equipmentList.map((e) => e.category));
+  const mapping: Record<string, SafetyCategory> = {
+    electric: 'electric',
+    thermal: 'thermal',
+    optical: 'optical',
+    mechanical: 'mechanical',
+    radiation: 'radiation',
+    chemical: 'chemical',
+  };
+  const matched = Array.from(cats)
+    .map((c) => mapping[c])
+    .filter(Boolean) as SafetyCategory[];
+  if (matched.length === 0) return 'mechanical';
+  if (matched.length === 1) return matched[0];
+  return 'combined';
+};
+
+export const useProjectStore = create<ProjectState>((set, get) => {
+  const initialProjects = loadLS<Project[]>(LS_KEYS.PROJECTS, []);
+  const initialRecruitments = loadLS<Recruitment[]>(LS_KEYS.RECRUITMENTS, []);
+  const initialShowcase = loadLS<ShowcaseItem[]>(LS_KEYS.SHOWCASE, []);
+
+  const persist = (
+    projects: Project[],
+    recruitments: Recruitment[],
+    showcaseItems: ShowcaseItem[]
+  ) => {
+    saveLS(LS_KEYS.PROJECTS, projects);
+    saveLS(LS_KEYS.RECRUITMENTS, recruitments);
+    saveLS(LS_KEYS.SHOWCASE, showcaseItems);
+  };
+
+  return {
+    projects: initialProjects,
+    recruitments: initialRecruitments,
+    showcaseItems: initialShowcase,
+
+    getProjectById: (projectId) => get().projects.find((p) => p.id === projectId),
+
+    getRecruitmentsByProject: (projectId) =>
+      get().recruitments.filter((r) => r.projectId === projectId),
+
+    createProject: (partial) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const equipList = partial.equipmentList || [];
+      const project: Project = {
+        id: `proj_${uid()}`,
+        title: partial.title,
+        topic: partial.topic,
+        ownerGroupId: partial.ownerGroupId,
+        startDate: partial.startDate || new Date(),
+        dueDate: partial.dueDate || new Date(Date.now() + 30 * 86400000),
+        progress: partial.progress || 0,
+        status: partial.status || 'planning',
+        techPoints: partial.techPoints || '',
+        difficulties: partial.difficulties || '',
+        equipmentList: equipList,
+        safetyCategory: partial.safetyCategory || inferSafetyCategory(equipList),
+        safetyPassed: partial.safetyPassed || {},
+        photos: partial.photos || [],
+        results: partial.results || '',
+        rewardCoins: partial.rewardCoins || 200,
+      };
+      const next = [...projects, project];
+      persist(next, recruitments, showcaseItems);
+      set({ projects: next });
+      // 后端生成自己的 ID 与 ownerGroupId（取自 JWT），创建成功后重拉对齐本地。
+      syncToApi(async () => {
+        await projectsApi.create({
+          title: project.title,
+          topic: project.topic,
+          techPoints: project.techPoints,
+          difficulties: project.difficulties,
+          equipmentList: project.equipmentList,
+          dueDate: (project.dueDate instanceof Date
+            ? project.dueDate
+            : new Date(project.dueDate)
+          ).toISOString(),
+          rewardCoins: project.rewardCoins,
+        } as any);
+        const fresh = await projectsApi.list();
+        set({ projects: reviveProjectDates(fresh) });
+      }, 'projects.create');
+      return project;
+    },
+
+    updateStatus: (id, status) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = projects.map((p) => (p.id === id ? { ...p, status } : p));
+      persist(next, recruitments, showcaseItems);
+      set({ projects: next });
+      syncToApi(() => projectsApi.updateStatus(id, status), 'projects.updateStatus');
+    },
+
+    setProgress: (id, progressVal) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const val = Math.max(0, Math.min(100, progressVal));
+      const next = projects.map((p) => (p.id === id ? { ...p, progress: val } : p));
+      persist(next, recruitments, showcaseItems);
+      set({ projects: next });
+      syncToApi(() => projectsApi.updateProgress(id, val), 'projects.updateProgress');
+    },
+
+    markProjectDone: (id) => {
+      const { projects, recruitments, showcaseItems } = get();
+      let doneProject: Project | null = null;
+      const nextProjects = projects.map((p) => {
+        if (p.id === id) {
+          doneProject = { ...p, status: 'done' as ProjectStatus, progress: 100 };
+          return doneProject;
+        }
+        return p;
+      });
+      if (doneProject) {
+        // 本地乐观结算（仅更新内存 UI）；后端 markDone 端点内部完成正式记账。
+        useCoinStore.getState().settleProjectDone(doneProject);
+      }
+      persist(nextProjects, recruitments, showcaseItems);
+      set({ projects: nextProjects });
+      // 后端会同时结算金币，完成后重拉小组/交易以对齐余额。
+      syncToApi(async () => {
+        await projectsApi.markDone(id);
+        await refetchAfterSettlement();
+      }, 'projects.markDone');
+    },
+
+    createRecruitment: (partial) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const recruitment: Recruitment = {
+        id: `rec_${uid()}`,
+        projectId: partial.projectId,
+        title: partial.title,
+        description: partial.description,
+        skills: partial.skills || [],
+        reward: partial.reward,
+        deadline: partial.deadline,
+        status: 'open',
+        bids: [],
+      };
+      const next = [...recruitments, recruitment];
+      persist(projects, next, showcaseItems);
+      set({ recruitments: next });
+      syncToApi(async () => {
+        await recruitmentsApi.create({
+          projectId: recruitment.projectId,
+          title: recruitment.title,
+          description: recruitment.description,
+          skills: recruitment.skills,
+          reward: recruitment.reward,
+          deadline: (recruitment.deadline instanceof Date
+            ? recruitment.deadline
+            : new Date(recruitment.deadline)
+          ).toISOString(),
+        });
+        const fresh = await recruitmentsApi.list();
+        set({ recruitments: reviveRecruitmentDates(fresh) });
+      }, 'recruitments.create');
+      return recruitment;
+    },
+
+    placeBid: (recruitmentId, bid) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = recruitments.map((r) => {
+        if (r.id !== recruitmentId) return r;
+        const newBid: RecruitmentBid = { ...bid, bidAt: new Date() };
+        return { ...r, bids: [...r.bids, newBid] };
+      });
+      persist(projects, next, showcaseItems);
+      set({ recruitments: next });
+      syncToApi(
+        () =>
+          recruitmentsApi.bid(recruitmentId, {
+            userId: bid.userId,
+            skillDesc: bid.skillDesc,
+            hours: bid.hours,
+          }),
+        'recruitments.bid'
+      );
+    },
+
+    assignRecruitment: (recruitmentId, userId) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next: Recruitment[] = recruitments.map((r) =>
+        r.id === recruitmentId
+          ? { ...r, status: 'assigned' as const, assigneeUserId: userId }
+          : r
+      );
+      persist(projects, next, showcaseItems);
+      set({ recruitments: next });
+      syncToApi(() => recruitmentsApi.assign(recruitmentId, userId), 'recruitments.assign');
+    },
+
+    resolveRecruitment: (recruitmentId, result) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const target = recruitments.find((r) => r.id === recruitmentId);
+      if (target) {
+        // 本地乐观结算；后端 resolve 端点内部完成正式记账。
+        useCoinStore.getState().settleRecruitment(target, result);
+      }
+      const next: Recruitment[] = recruitments.map((r) => {
+        if (r.id !== recruitmentId) return r;
+        const actualPay =
+          result === 'success'
+            ? r.reward
+            : result === 'partial'
+              ? Math.floor(r.reward * 0.5)
+              : 0;
+        const updated: Recruitment = {
+          ...r,
+          status: (result === 'fail' ? 'failed' : 'done') as Recruitment['status'],
+          result,
+          actualPay,
+        };
+        return updated;
+      });
+      persist(projects, next, showcaseItems);
+      set({ recruitments: next });
+      syncToApi(async () => {
+        await recruitmentsApi.resolve(recruitmentId, result);
+        await refetchAfterSettlement();
+      }, 'recruitments.resolve');
+    },
+
+    markSafetyPass: (projectId, userId) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = projects.map((p) => {
+        if (p.id !== projectId) return p;
+        return { ...p, safetyPassed: { ...p.safetyPassed, [userId]: true } };
+      });
+      persist(next, recruitments, showcaseItems);
+      set({ projects: next });
+      // 后端以当前 JWT 用户记录安全认证通过（忽略传入 userId）。
+      syncToApi(() => projectsApi.markSafetyPass(projectId), 'projects.markSafetyPass');
+    },
+
+    addShowcaseItem: (partial) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const item: ShowcaseItem = {
+        id: `showcase_${uid()}`,
+        projectId: partial.projectId || '',
+        title: partial.title,
+        coverImage: partial.coverImage,
+        groupId: partial.groupId,
+        description: partial.description || '',
+        loves: 0,
+        lovedBy: [],
+        createdAt: new Date(),
+      };
+      const next = [...showcaseItems, item];
+      persist(projects, recruitments, next);
+      set({ showcaseItems: next });
+      syncToApi(async () => {
+        await showcaseApi.create({
+          projectId: item.projectId || undefined,
+          title: item.title,
+          coverImage: item.coverImage,
+          groupId: item.groupId,
+          description: item.description,
+        });
+        const fresh = await showcaseApi.list();
+        set({ showcaseItems: reviveShowcaseDates(fresh) });
+      }, 'showcase.create');
+      return item;
+    },
+
+    toggleShowcaseLove: (showcaseId, userId) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const uidStr = String(userId);
+      const next = showcaseItems.map((s) => {
+        if (s.id !== showcaseId) return s;
+        const loved = s.lovedBy.includes(uidStr);
+        if (loved) {
+          return {
+            ...s,
+            loves: Math.max(0, s.loves - 1),
+            lovedBy: s.lovedBy.filter((x) => x !== uidStr),
+          };
+        }
+        return { ...s, loves: s.loves + 1, lovedBy: [...s.lovedBy, uidStr] };
+      });
+      persist(projects, recruitments, next);
+      set({ showcaseItems: next });
+      syncToApi(() => showcaseApi.toggleLove(showcaseId), 'showcase.toggleLove');
+    },
+  };
+});

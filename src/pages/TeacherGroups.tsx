@@ -1,0 +1,1008 @@
+import { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Rocket,
+  Users,
+  Zap,
+  Crown,
+  Pencil,
+  Trash2,
+  Plus,
+  Minus,
+  RefreshCw,
+  AlertTriangle,
+  X,
+  Trophy,
+  Sparkles,
+  GripVertical,
+  CheckCircle2,
+  Coins,
+  UserPlus,
+  Settings,
+  Shield,
+  UserMinus,
+  LogIn,
+} from 'lucide-react';
+import MissionShell from '@/components/layout/MissionShell';
+import { useGroupStore } from '@/store/groupStore';
+import { cn } from '@/lib/utils';
+import AvatarStack from '@/components/ui/AvatarStack';
+import type { User } from '@/data/mockData';
+
+type DialogKind = 'reset' | 'new' | 'coins' | 'rename' | 'members' | 'disband' | null;
+
+const FLEET_THEMES = [
+  { color: '#4F7CFF', grad: 'from-mission-400 via-mission-500 to-mission-600' },
+  { color: '#22C55E', grad: 'from-growth-400 via-growth-500 to-growth-600' },
+  { color: '#FF8A34', grad: 'from-energy-400 via-energy-500 to-energy-600' },
+  { color: '#8B5CF6', grad: 'from-nova-400 via-nova-500 to-nova-600' },
+  { color: '#F59E0B', grad: 'from-alert-400 via-alert-500 to-energy-500' },
+  { color: '#06B6D4', grad: 'from-cyan-400 via-cyan-500 to-mission-500' },
+];
+
+function useTicker(target: number, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf: number;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(target * ease));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+export default function TeacherGroups() {
+  const groups = useGroupStore((s) => s.groups);
+  const users = useGroupStore((s) => s.users);
+  const classMeta = useGroupStore((s) => s.classMeta);
+  const addGroup = useGroupStore((s) => s.addGroup);
+  const renameGroup = useGroupStore((s) => s.renameGroup);
+  const deleteGroup = useGroupStore((s) => s.deleteGroup);
+  const setLeader = useGroupStore((s) => s.setLeader);
+  const assignUserGroup = useGroupStore((s) => s.assignUserGroup);
+  const updateGroupCoins = useGroupStore((s) => s.updateGroupCoins);
+
+  const [dialog, setDialog] = useState<DialogKind>(null);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [globalCoins, setGlobalCoins] = useState(classMeta.initialCoinsPerGroup || 500);
+  const [resetConfirmStep, setResetConfirmStep] = useState(0);
+  const [renameInput, setRenameInput] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
+  const [coinAmount, setCoinAmount] = useState(100);
+  const [coinMode, setCoinMode] = useState<'add' | 'sub'>('add');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const flashToast = (m: string) => {
+    setToastMsg(m);
+    setTimeout(() => setToastMsg(null), 2400);
+  };
+
+  const usersByGroup = useMemo(() => {
+    const map: Record<string, User[]> = {};
+    for (const u of users) {
+      if (!u.groupId) continue;
+      (map[u.groupId] ||= []).push(u);
+    }
+    return map;
+  }, [users]);
+
+  const unassigned = useMemo(() => users.filter((u) => !u.groupId), [users]);
+
+  const rankedGroups = useMemo(
+    () => [...groups].sort((a, b) => b.totalCoins - a.totalCoins),
+    [groups]
+  );
+
+  const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
+  const activeMembers = activeGroupId ? usersByGroup[activeGroupId] || [] : [];
+
+  const themeFor = (id: string) => {
+    const idx = rankedGroups.findIndex((g) => g.id === id);
+    return FLEET_THEMES[(idx < 0 ? 0 : idx) % FLEET_THEMES.length];
+  };
+
+  const totalMembers = users.filter((u) => u.groupId).length;
+  const energyPool = groups.reduce((s, g) => s + g.totalCoins, 0);
+
+  // ----- actions -----
+  const applyCoinChange = () => {
+    if (!activeGroup) return;
+    const delta = coinMode === 'add' ? coinAmount : -coinAmount;
+    updateGroupCoins(activeGroup.id, delta);
+    flashToast(`${coinMode === 'add' ? '+' : '-'}${coinAmount} ⚡ → ${activeGroup.name}`);
+    setDialog(null);
+    setActiveGroupId(null);
+  };
+
+  const confirmResetAll = () => {
+    groups.forEach((g) => updateGroupCoins(g.id, globalCoins - g.totalCoins));
+    flashToast(`✔ 全部 ${groups.length} 个小组能量币已重置为 ⚡ ${globalCoins}`);
+    setResetConfirmStep(0);
+    setDialog(null);
+  };
+
+  const toggleNewMember = (uid: string) => {
+    setNewGroupMembers((m) => (m.includes(uid) ? m.filter((x) => x !== uid) : [...m, uid]));
+  };
+
+  const submitNewGroup = () => {
+    if (!newGroupName.trim()) return;
+    const beforeIds = new Set(groups.map((g) => g.id));
+    addGroup(newGroupName.trim(), globalCoins);
+    // addGroup 会在后端返回后用全量列表对齐 store，这里稍后找到新组再分配成员。
+    const chosen = [...newGroupMembers];
+    const name = newGroupName.trim();
+    flashToast(`🚀 新小组「${name}」已创建`);
+    setDialog(null);
+    setNewGroupName('');
+    setNewGroupMembers([]);
+    if (chosen.length) {
+      // 轮询等待新组出现（后端异步返回后 store 会刷新）
+      let tries = 0;
+      const timer = setInterval(() => {
+        tries += 1;
+        const created = useGroupStore
+          .getState()
+          .groups.find((g) => !beforeIds.has(g.id) && g.name === name);
+        if (created) {
+          chosen.forEach((uid, i) => assignUserGroup(uid, created.id, i === 0 ? 'leader' : 'member'));
+          clearInterval(timer);
+        } else if (tries > 40) {
+          clearInterval(timer);
+        }
+      }, 150);
+    }
+  };
+
+  const doRename = () => {
+    if (!activeGroup || !renameInput.trim()) return;
+    renameGroup(activeGroup.id, renameInput.trim());
+    flashToast(`✔ 小组已更名为「${renameInput.trim()}」`);
+    setDialog(null);
+    setRenameInput('');
+    setActiveGroupId(null);
+  };
+
+  const doDisband = () => {
+    if (!activeGroup) return;
+    const name = activeGroup.name;
+    deleteGroup(activeGroup.id);
+    flashToast(`💥 ${name} 已解散`);
+    setDialog(null);
+    setActiveGroupId(null);
+  };
+
+  const makeLeader = (uid: string) => {
+    if (!activeGroupId) return;
+    setLeader(activeGroupId, uid);
+    const u = users.find((x) => x.id === uid);
+    flashToast(`👑 ${u?.name || ''} 已设为组长`);
+  };
+
+  const removeMember = (uid: string) => {
+    assignUserGroup(uid, null);
+    const u = users.find((x) => x.id === uid);
+    flashToast(`↩ ${u?.name || ''} 已移出小组`);
+  };
+
+  const addMemberToActive = (uid: string) => {
+    if (!activeGroupId) return;
+    assignUserGroup(uid, activeGroupId, 'member');
+    const u = users.find((x) => x.id === uid);
+    flashToast(`➕ ${u?.name || ''} 已加入 ${activeGroup?.name || ''}`);
+  };
+
+  const openMembers = (groupId: string) => {
+    setActiveGroupId(groupId);
+    setDialog('members');
+  };
+
+  return (
+    <MissionShell>
+      <div className="space-y-6">
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="glass-card p-6 md:p-8 rounded-[28px] relative overflow-hidden"
+        >
+          <div className="absolute -top-20 -right-10 w-96 h-96 rounded-full bg-nova-400/12 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-10 w-96 h-96 rounded-full bg-mission-400/10 blur-3xl pointer-events-none" />
+          <div className="relative z-10 flex flex-wrap items-center gap-5">
+            <div className="relative shrink-0">
+              <div className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-mission-400/20 via-nova-400/15 to-energy-400/20 blur-lg" />
+              <div className="relative w-[84px] h-[84px] rounded-[26px] bg-gradient-to-br from-mission-500 via-nova-500 to-energy-500 flex items-center justify-center shadow-glowMission">
+                <Rocket size={38} className="text-white relative z-10" strokeWidth={2.2} />
+                <Sparkles size={18} className="absolute top-3 right-3 text-white/80" strokeWidth={2.4} />
+              </div>
+            </div>
+            <div className="flex-1 min-w-[260px]">
+              <span className="mission-label">
+                <GripVertical size={12} />
+                FLEET MANAGEMENT · 小组编组 · SEASON 2026
+              </span>
+              <h1 className="mt-3 text-[30px] md:text-[36px] font-extrabold text-ink-900 leading-[1.1] tracking-tight">
+                Fleet Management
+                <span className="block text-gradient-mission mt-1">物理创新班 · 小组编组指挥台</span>
+              </h1>
+              <p className="mt-3 text-[14px] md:text-[15px] text-ink-500 leading-relaxed max-w-2xl">
+                当前 <b className="text-ink-700">{groups.length} 个</b> 小组 ·{' '}
+                <b className="text-ink-700">{totalMembers} 名</b> 已分组研究员 ·{' '}
+                <b className="text-alert-600">{unassigned.length} 名</b> 待分配
+              </p>
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <FleetStat label="总小组" val={groups.length} unit="个" grad="from-mission-400 to-nova-500" icon={Rocket} />
+              <FleetStat label="已分组" val={totalMembers} unit="人" grad="from-energy-400 to-alert-500" icon={Users} />
+              <FleetStat label="能量池" val={energyPool} unit="⚡" grad="from-growth-400 to-mission-500" icon={Coins} />
+            </div>
+          </div>
+        </motion.section>
+
+        {/* 未分组学生 */}
+        {unassigned.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.05 }}
+            className="glass-card p-5 md:p-6 rounded-[22px] border-2 border-alert-200/60"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-alert-400 to-energy-500 flex items-center justify-center text-white shadow-md">
+                <UserPlus size={17} />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[16px] text-ink-800">待分配学生（{unassigned.length}）</h3>
+                <p className="text-[12px] text-ink-500">注册但尚未加入小组的研究员，可直接分配到目标小组</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {unassigned.map((u) => (
+                <div key={u.id} className="flex items-center gap-2.5 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
+                  <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm bg-white object-cover" />
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-bold text-ink-800 truncate max-w-[110px]">{u.name}</div>
+                    <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
+                  </div>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        assignUserGroup(u.id, e.target.value, 'member');
+                        flashToast(`➕ ${u.name} 已分配到 ${groups.find((g) => g.id === e.target.value)?.name || ''}`);
+                      }
+                    }}
+                    className="bg-mission-50/70 border border-mission-200 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-mission-700 focus:outline-none focus:ring-2 focus:ring-mission-400/30 cursor-pointer"
+                  >
+                    <option value="">分配到…</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {/* 工具栏 */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.08 }}
+          className="glass-card p-4 md:p-5 rounded-[22px] flex flex-wrap items-center gap-3 md:gap-4"
+        >
+          <div className="flex items-center gap-2.5 bg-gradient-to-br from-energy-50 via-white to-mission-50 border border-energy-200/60 rounded-[16px] px-4 py-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-energy-400 to-energy-600 flex items-center justify-center text-white shadow-md shadow-energy-500/20 shrink-0">
+              <Coins size={17} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10.5px] text-ink-400 font-semibold tracking-wide uppercase">全局初始能量币</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={globalCoins}
+                  onChange={(e) => setGlobalCoins(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-28 bg-white border border-ink-200/80 focus:border-mission-400 rounded-xl px-3 py-1.5 text-[14px] font-bold text-ink-800 focus:outline-none focus:ring-2 focus:ring-mission-400/30 transition tabular-nums"
+                />
+                <span className="text-energy-600 font-bold text-[14px]">⚡</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-10 w-px bg-ink-200/70 hidden md:block" />
+
+          <button
+            onClick={() => {
+              setResetConfirmStep(0);
+              setDialog('reset');
+            }}
+            className="btn-danger inline-flex items-center gap-2"
+          >
+            <RefreshCw size={15} />
+            批量重置所有小组能量
+          </button>
+
+          <div className="h-10 w-px bg-ink-200/70 hidden md:block" />
+
+          <button
+            onClick={() => {
+              setNewGroupName('');
+              setNewGroupMembers([]);
+              setDialog('new');
+            }}
+            className="btn-mission ml-auto inline-flex items-center gap-2"
+          >
+            <Plus size={15} />
+            新建小组
+          </button>
+        </motion.section>
+
+        {groups.length === 0 ? (
+          <div className="glass-card p-10 rounded-[24px] text-center text-ink-500">
+            <Rocket size={40} className="mx-auto text-ink-300 mb-3" />
+            还没有任何小组，点击右上角「新建小组」开始编组。
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.12 }}
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
+          >
+            {rankedGroups.map((g, idx) => {
+              const members = usersByGroup[g.id] || [];
+              const leader = members.find((u) => u.role === 'leader') || members[0];
+              const theme = FLEET_THEMES[idx % FLEET_THEMES.length];
+              const maxCoins = Math.max(1, ...rankedGroups.map((x) => x.totalCoins));
+              return (
+                <motion.article
+                  key={g.id}
+                  initial={{ opacity: 0, y: 22, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.4, delay: 0.12 + idx * 0.05, type: 'spring', stiffness: 90 }}
+                  className="glass-card glass-card-hover rounded-[24px] p-0 overflow-hidden relative"
+                >
+                  <div className={cn('h-3 w-full bg-gradient-to-r shadow-sm', theme.grad)} />
+                  <div className={cn('absolute top-0 left-0 right-0 h-28 opacity-25 pointer-events-none bg-gradient-to-b', theme.grad, 'to-transparent blur-xl')} />
+                  <div className="p-5 md:p-6 relative z-10">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="relative w-14 h-14 rounded-2xl shrink-0 flex items-center justify-center text-white text-[22px] font-extrabold shadow-lg"
+                          style={{
+                            background: `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}dd 50%, ${theme.color}99 100%)`,
+                            boxShadow: `0 8px 20px ${theme.color}35, 0 0 0 2px rgba(255,255,255,0.7) inset`,
+                          }}
+                        >
+                          {g.name.slice(0, 2)}
+                          <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white flex items-center justify-center shadow-md">
+                            <Trophy size={10} style={{ color: theme.color }} />
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-extrabold text-[17px] text-ink-800 truncate">{g.name}</h3>
+                            <span className="chip-mission !py-0.5 !px-2 !text-[10px] shrink-0">
+                              <Shield size={10} />
+                              #{idx + 1}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 text-[12px] text-ink-500 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Crown size={12} style={{ color: '#F59E0B' }} />
+                              <b className="text-ink-700">{leader?.name || '—'}</b>
+                            </span>
+                            <span className="text-ink-300">·</span>
+                            <span>{members.length} 名成员</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      {members.length ? (
+                        <AvatarStack users={members as any} size={32} max={6} />
+                      ) : (
+                        <span className="text-[12px] text-ink-400">暂无成员，点击「成员管理」添加</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-end justify-between mb-5">
+                      <div>
+                        <div className="text-[11px] text-ink-400 font-semibold tracking-wider uppercase mb-1 flex items-center gap-1">
+                          <Zap size={12} className="text-energy-500" />
+                          当前能量储备
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-[40px] font-black leading-none tabular-nums">
+                            <span
+                              className="bg-clip-text text-transparent"
+                              style={{ backgroundImage: `linear-gradient(135deg, ${theme.color} 0%, #FF8A34 100%)` }}
+                            >
+                              <NumTicker val={g.totalCoins} />
+                            </span>
+                          </span>
+                          <span className="text-energy-600 text-lg font-bold">⚡</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-ink-400">
+                          平均 {Math.round(g.totalCoins / Math.max(1, members.length))}/人
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-ink-100/80 overflow-hidden mb-5">
+                      <div
+                        className={cn('h-full rounded-full bg-gradient-to-r', theme.grad)}
+                        style={{ width: `${Math.min(100, (g.totalCoins / maxCoins) * 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button
+                        onClick={() => {
+                          setActiveGroupId(g.id);
+                          setRenameInput(g.name);
+                          setDialog('rename');
+                        }}
+                        className="btn-ghost !py-2 !px-3 text-[12px] !rounded-xl"
+                      >
+                        <Pencil size={13} />
+                        改名
+                      </button>
+                      <button
+                        onClick={() => openMembers(g.id)}
+                        className="btn-ghost !py-2 !px-3 text-[12px] !rounded-xl w-full"
+                      >
+                        <Users size={13} />
+                        成员管理
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setActiveGroupId(g.id);
+                          setDialog('disband');
+                        }}
+                        className="btn-danger-outline !py-2 !px-3 text-[12px] !rounded-xl"
+                      >
+                        <Trash2 size={13} />
+                        解散小组
+                      </button>
+                      <button
+                        onClick={() => {
+                          setActiveGroupId(g.id);
+                          setCoinAmount(100);
+                          setCoinMode('add');
+                          setDialog('coins');
+                        }}
+                        className="btn-energy !py-2 !px-3 text-[12px] !rounded-xl !gap-1.5"
+                      >
+                        <Coins size={13} />
+                        ±能量币
+                      </button>
+                    </div>
+                  </div>
+                </motion.article>
+              );
+            })}
+          </motion.div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {toastMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] glass-card px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3"
+            style={{ border: '1px solid rgba(79,124,255,0.25)', boxShadow: '0 18px 40px rgba(15,23,42,0.15)' }}
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-growth-400 to-growth-600 flex items-center justify-center text-white shrink-0">
+              <CheckCircle2 size={16} />
+            </div>
+            <div className="font-semibold text-[13.5px] text-ink-700 max-w-[380px]">{toastMsg}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {dialog && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-ink-900/55 backdrop-blur-md"
+              onClick={() => setDialog(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 28, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 120, damping: 16 }}
+              className="relative z-10 glass-card w-full max-w-[560px] rounded-[24px] p-6 md:p-7 shadow-2xl max-h-[85vh] overflow-y-auto scroll-thin"
+              style={{ boxShadow: '0 30px 70px rgba(15,23,42,0.25)' }}
+            >
+              {dialog === 'reset' && (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-danger-400 to-alert-500 flex items-center justify-center text-white shadow-lg shadow-danger-500/25 animate-pulse">
+                      <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-[19px] text-ink-900">⚠ 确认重置全部小组能量？</h3>
+                      <p className="text-[12.5px] text-ink-500">操作将把 {groups.length} 个小组全部重置为 ⚡ {globalCoins}</p>
+                    </div>
+                    <button onClick={() => setDialog(null)} className="ml-auto w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                      <X size={17} />
+                    </button>
+                  </div>
+                  <div className="space-y-3 my-5">
+                    {[
+                      `我知道这将覆盖所有 ${groups.length} 个小组当前能量值`,
+                      `每个小组将恢复为 ⚡ ${globalCoins}`,
+                      '此操作会写入 teacher_set 流水日志，可事后审计',
+                    ].map((label, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (resetConfirmStep === i) setResetConfirmStep(i + 1);
+                        }}
+                        className={cn(
+                          'w-full text-left px-4 py-3 rounded-xl border transition-all',
+                          resetConfirmStep > i
+                            ? 'bg-growth-50 border-growth-300 border-2 text-growth-800'
+                            : resetConfirmStep === i
+                              ? 'bg-mission-50 border-mission-400 border-2 text-mission-800 hover:bg-mission-100/60 cursor-pointer'
+                              : 'bg-ink-50/50 border-ink-200 text-ink-400 border cursor-not-allowed opacity-60'
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={cn(
+                              'w-6 h-6 rounded-lg flex items-center justify-center shrink-0 text-white font-bold text-[12px]',
+                              resetConfirmStep > i ? 'bg-growth-500' : resetConfirmStep === i ? 'bg-mission-500' : 'bg-ink-300'
+                            )}
+                          >
+                            {resetConfirmStep > i ? <CheckCircle2 size={14} /> : i + 1}
+                          </div>
+                          <span className="font-semibold text-[13px]">{label}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>
+                      取消
+                    </button>
+                    <button
+                      disabled={resetConfirmStep < 3}
+                      onClick={confirmResetAll}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-2 font-bold rounded-2xl transition-all py-3 px-5',
+                        resetConfirmStep >= 3
+                          ? 'bg-gradient-to-br from-danger-500 to-danger-700 text-white shadow-xl shadow-danger-500/30 hover:scale-[1.02]'
+                          : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+                      )}
+                    >
+                      <RefreshCw size={16} className={resetConfirmStep >= 3 ? 'animate-spin' : ''} style={{ animationDuration: '1.4s' }} />
+                      {resetConfirmStep >= 3 ? `确认重置全部 ${groups.length} 个` : '请完成上面 3 步确认'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dialog === 'new' && (
+                <>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 via-nova-500 to-energy-500 flex items-center justify-center text-white shadow-glowMission">
+                        <Rocket size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">🚀 新建小组</h3>
+                        <p className="text-[12.5px] text-ink-500">填写组名，可选：从待分配学生中挑选成员（第一位为组长）</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setDialog(null)} className="w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                      <X size={17} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[12px] font-bold text-ink-600 mb-1.5 flex items-center gap-1.5">
+                        <Settings size={12} className="text-mission-500" /> 小组名称
+                      </label>
+                      <input
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        placeholder="例如：开普勒宇航队"
+                        className="w-full bg-white/80 border border-ink-200 focus:border-mission-400 rounded-xl px-4 py-2.5 text-[14px] text-ink-800 focus:outline-none focus:ring-3 focus:ring-mission-400/25 transition placeholder:text-ink-300"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[12px] font-bold text-ink-600 flex items-center gap-1.5">
+                          <UserPlus size={12} className="text-growth-500" /> 从待分配学生中选择成员（可选）
+                        </label>
+                        <span className="chip-mission !py-0.5 !px-2 !text-[10px]">{newGroupMembers.length} 人</span>
+                      </div>
+                      {unassigned.length === 0 ? (
+                        <p className="text-[12px] text-ink-400 py-2">当前没有待分配学生，可先创建空组，稍后在「成员管理」中添加。</p>
+                      ) : (
+                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5 max-h-[240px] overflow-y-auto scroll-thin p-1">
+                          {unassigned.map((u) => {
+                            const selected = newGroupMembers.includes(u.id);
+                            return (
+                              <button
+                                key={u.id}
+                                onClick={() => toggleNewMember(u.id)}
+                                className={cn(
+                                  'relative p-2.5 rounded-2xl border-2 transition-all text-center',
+                                  selected
+                                    ? 'bg-mission-50 border-mission-400 shadow-md shadow-mission-500/15 scale-[1.02]'
+                                    : 'bg-white/60 border-ink-100 hover:border-mission-200 hover:bg-mission-50/40'
+                                )}
+                              >
+                                <img src={u.avatar} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
+                                <div className="mt-1.5 text-[10.5px] font-bold text-ink-700 truncate leading-tight">{u.name}</div>
+                                {selected && (
+                                  <div className="absolute top-1 right-1 rounded-full bg-gradient-to-br from-mission-500 to-nova-500 flex items-center justify-center text-white shadow-md" style={{ width: 18, height: 18 }}>
+                                    <CheckCircle2 size={11} />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>
+                      取消
+                    </button>
+                    <button
+                      disabled={!newGroupName.trim()}
+                      onClick={submitNewGroup}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-2 font-bold rounded-2xl transition-all py-3 px-5',
+                        newGroupName.trim()
+                          ? 'bg-gradient-to-br from-mission-500 via-nova-500 to-energy-500 text-white shadow-xl shadow-mission-500/30 hover:scale-[1.02]'
+                          : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+                      )}
+                    >
+                      <Sparkles size={16} />
+                      创建小组
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dialog === 'coins' && activeGroup && (
+                <>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white" style={{ background: `linear-gradient(135deg, ${themeFor(activeGroup.id).color}, #FF8A34)` }}>
+                        <Coins size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">⚡ 能量币调整</h3>
+                        <p className="text-[12.5px] text-ink-500">
+                          操作对象：<b className="text-ink-700">{activeGroup.name}</b> · 当前 <b className="text-energy-600">⚡ {activeGroup.totalCoins.toLocaleString()}</b>
+                        </p>
+                      </div>
+                      <button onClick={() => setDialog(null)} className="ml-auto w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                        <X size={17} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-5 grid grid-cols-2 gap-2.5">
+                    <button
+                      onClick={() => setCoinMode('add')}
+                      className={cn(
+                        'p-3.5 rounded-2xl border-2 font-bold transition-all flex items-center justify-center gap-2',
+                        coinMode === 'add'
+                          ? 'bg-gradient-to-br from-growth-50 to-growth-100/70 border-growth-400 text-growth-700 shadow-md shadow-growth-500/10'
+                          : 'bg-white/50 border-ink-200 text-ink-500 hover:border-growth-200'
+                      )}
+                    >
+                      <Plus size={17} />
+                      增加能量
+                    </button>
+                    <button
+                      onClick={() => setCoinMode('sub')}
+                      className={cn(
+                        'p-3.5 rounded-2xl border-2 font-bold transition-all flex items-center justify-center gap-2',
+                        coinMode === 'sub'
+                          ? 'bg-gradient-to-br from-danger-50 to-alert-50/60 border-danger-400 text-danger-700 shadow-md shadow-danger-500/10'
+                          : 'bg-white/50 border-ink-200 text-ink-500 hover:border-danger-200'
+                      )}
+                    >
+                      <Minus size={17} />
+                      扣除能量
+                    </button>
+                  </div>
+
+                  <div className="mb-5">
+                    <label className="text-[12px] font-bold text-ink-600 mb-1.5 flex items-center justify-between">
+                      <span>{coinMode === 'add' ? '增加' : '扣除'}数量 (⚡)</span>
+                      <span className={cn('font-extrabold tabular-nums', coinMode === 'add' ? 'text-growth-700' : 'text-danger-700')}>
+                        {coinMode === 'add' ? '+' : '-'}
+                        {coinAmount}
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min={10}
+                      max={500}
+                      step={10}
+                      value={coinAmount}
+                      onChange={(e) => setCoinAmount(Number(e.target.value))}
+                      className="w-full accent-mission-500 mb-2"
+                    />
+                    <div className="grid grid-cols-5 gap-2">
+                      {[50, 100, 200, 300, 500].map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => setCoinAmount(v)}
+                          className={cn(
+                            'py-1.5 rounded-xl text-[12px] font-bold transition-all',
+                            coinAmount === v
+                              ? coinMode === 'add'
+                                ? 'bg-gradient-to-br from-growth-400 to-growth-600 text-white shadow-sm'
+                                : 'bg-gradient-to-br from-danger-400 to-danger-600 text-white shadow-sm'
+                              : 'bg-ink-100/70 text-ink-500 hover:bg-mission-50'
+                          )}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mb-5 p-4 rounded-2xl border-2 border-ink-100 bg-ink-50/40">
+                    <div className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider mb-1">操作后预览</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[36px] font-black tabular-nums text-ink-800">
+                        {coinMode === 'add' ? activeGroup.totalCoins + coinAmount : Math.max(0, activeGroup.totalCoins - coinAmount)}
+                      </span>
+                      <span className="text-energy-600 text-xl font-bold">⚡</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>
+                      取消
+                    </button>
+                    <button onClick={applyCoinChange} className={coinMode === 'add' ? 'btn-growth flex-1' : 'btn-danger flex-1'}>
+                      {coinMode === 'add' ? <Plus size={15} /> : <Minus size={15} />}
+                      确认 {coinMode === 'add' ? `+${coinAmount}` : `-${coinAmount}`} ⚡
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dialog === 'rename' && activeGroup && (
+                <>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shadow-md">
+                        <Pencil size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">✏ 重命名小组</h3>
+                        <p className="text-[12.5px] text-ink-500">原名称：<b className="text-ink-700">{activeGroup.name}</b></p>
+                      </div>
+                      <button onClick={() => setDialog(null)} className="ml-auto w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                        <X size={17} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-5">
+                    <input
+                      autoFocus
+                      value={renameInput}
+                      onChange={(e) => setRenameInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && doRename()}
+                      className="w-full bg-white/80 border border-ink-200 focus:border-mission-400 rounded-xl px-4 py-3 text-[15px] font-semibold text-ink-800 focus:outline-none focus:ring-3 focus:ring-mission-400/25"
+                      placeholder="输入新的小组名称…"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>取消</button>
+                    <button
+                      disabled={!renameInput.trim()}
+                      onClick={doRename}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-2 font-bold rounded-2xl transition-all py-3 px-5',
+                        renameInput.trim() ? 'btn-mission' : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+                      )}
+                    >
+                      <CheckCircle2 size={15} />
+                      保存新名称
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dialog === 'members' && activeGroup && (
+                <>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shadow-md">
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">成员管理 · {activeGroup.name}</h3>
+                        <p className="text-[12.5px] text-ink-500">设组长、移出成员，或从待分配学生中加入</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setDialog(null)} className="w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                      <X size={17} />
+                    </button>
+                  </div>
+
+                  <div className="mb-5">
+                    <div className="text-[12px] font-bold text-ink-600 mb-2 flex items-center gap-1.5">
+                      <Crown size={12} className="text-alert-500" /> 当前成员（{activeMembers.length}）
+                    </div>
+                    {activeMembers.length === 0 ? (
+                      <p className="text-[12px] text-ink-400 py-2">该小组还没有成员。</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {activeMembers.map((u) => (
+                          <div key={u.id} className="flex items-center gap-3 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
+                            <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm object-cover" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[13px] font-bold text-ink-800 truncate">{u.name}</span>
+                                {u.role === 'leader' && <span className="chip-nova !py-0 !px-1.5 !text-[9px]">组长</span>}
+                              </div>
+                              <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
+                            </div>
+                            {u.role !== 'leader' && (
+                              <button
+                                onClick={() => makeLeader(u.id)}
+                                className="btn-ghost !py-1.5 !px-2.5 !text-[11px] !rounded-lg"
+                                title="设为组长"
+                              >
+                                <Crown size={12} /> 设组长
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeMember(u.id)}
+                              className="btn-danger-outline !py-1.5 !px-2.5 !text-[11px] !rounded-lg"
+                              title="移出小组"
+                            >
+                              <UserMinus size={12} /> 移出
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-[12px] font-bold text-ink-600 mb-2 flex items-center gap-1.5">
+                      <UserPlus size={12} className="text-growth-500" /> 从待分配学生加入（{unassigned.length}）
+                    </div>
+                    {unassigned.length === 0 ? (
+                      <p className="text-[12px] text-ink-400 py-2">没有待分配学生。</p>
+                    ) : (
+                      <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5 max-h-[200px] overflow-y-auto scroll-thin p-1">
+                        {unassigned.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => addMemberToActive(u.id)}
+                            className="relative p-2.5 rounded-2xl border-2 border-ink-100 bg-white/60 hover:border-growth-300 hover:bg-growth-50/40 transition-all text-center"
+                          >
+                            <img src={u.avatar} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
+                            <div className="mt-1.5 text-[10.5px] font-bold text-ink-700 truncate leading-tight">{u.name}</div>
+                            <div className="absolute top-1 right-1 rounded-full bg-growth-500 flex items-center justify-center text-white shadow-md" style={{ width: 18, height: 18 }}>
+                              <Plus size={11} />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button className="btn-mission flex-1" onClick={() => setDialog(null)}>
+                      <CheckCircle2 size={15} />
+                      完成
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dialog === 'disband' && activeGroup && (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-danger-500 to-danger-700 flex items-center justify-center text-white shadow-lg shadow-danger-500/25">
+                        <Trash2 size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">💥 解散小组？</h3>
+                        <p className="text-[12.5px] text-ink-500">
+                          小组 <b className="text-danger-700">{activeGroup.name}</b> 及 {activeMembers.length} 名成员
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => setDialog(null)} className="w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                      <X size={17} />
+                    </button>
+                  </div>
+                  <div className="my-5 p-4 rounded-2xl bg-danger-50/60 border-2 border-danger-200/70">
+                    <div className="flex gap-2 text-[13px] text-danger-800 font-semibold items-start">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5 text-danger-600" />
+                      <div>
+                        解散不可逆：
+                        <ul className="mt-1.5 ml-5 list-disc text-[12px] text-danger-700 font-medium space-y-0.5">
+                          <li>该小组的所有成员将一并从系统中删除</li>
+                          <li>当前 ⚡ {activeGroup.totalCoins.toLocaleString()} 能量币记录将随小组删除</li>
+                        </ul>
+                        <p className="mt-2 text-[11.5px] text-danger-600">
+                          如只想保留学生，请先在「成员管理」中把成员移出，再解散空组。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>
+                      取消
+                    </button>
+                    <button onClick={doDisband} className="btn-danger flex-1">
+                      <Trash2 size={15} />
+                      确认解散 {activeGroup.name}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </MissionShell>
+  );
+}
+
+function FleetStat({ label, val, unit, grad, icon: Icon }: { label: string; val: number; unit: string; grad: string; icon: any }) {
+  const v = useTicker(val, 1000);
+  return (
+    <div className="glass-card !shadow-none !border-mission-100/50 px-4 py-3 rounded-2xl min-w-[130px]">
+      <div className="flex items-center gap-2.5">
+        <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md bg-gradient-to-br', grad)}>
+          <Icon size={16} />
+        </div>
+        <div>
+          <div className="text-[10px] text-ink-400 font-semibold uppercase tracking-wider leading-none">{label}</div>
+          <div className="flex items-baseline gap-1 mt-0.5">
+            <span className="text-[22px] font-black text-ink-800 tabular-nums leading-none">{v}</span>
+            <span className="text-[11px] text-ink-500 font-bold">{unit}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NumTicker({ val }: { val: number }) {
+  const v = useTicker(val, 1200);
+  return <span className="tabular-nums">{v.toLocaleString()}</span>;
+}

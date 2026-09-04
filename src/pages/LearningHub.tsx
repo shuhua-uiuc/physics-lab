@@ -1,0 +1,615 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import {
+  Atom,
+  Zap,
+  Eye,
+  ThermometerSun,
+  RadioTower,
+  Waves,
+  Rocket,
+  Scale,
+  CheckCircle2,
+  Star,
+  Sparkles,
+  PlayCircle,
+  Trophy,
+  Clock,
+  Target,
+  Lightbulb,
+  Brain,
+  ChevronRight,
+  ChevronDown,
+  BookOpen,
+  X,
+  HelpCircle,
+} from 'lucide-react';
+import ProgressRing from '@/components/ui/ProgressRing';
+import { useTheoryStore } from '@/store/theoryStore';
+import { useUIStore } from '@/store/uiStore';
+import { mockTopics } from '@/data/mockTopics';
+import { cn } from '@/lib/utils';
+
+type TopicTab = 'ai-study' | 'knowledge' | 'quiz';
+
+interface TopicMeta {
+  id: string;
+  title: string;
+  icon: any;
+  chapters: number;
+  difficulty: 1 | 2 | 3;
+  completed: boolean;
+  unlocked: boolean;
+}
+
+const TOPIC_META: TopicMeta[] = [
+  { id: 'topic-01', title: '力学', icon: Atom, chapters: 12, difficulty: 1, completed: true, unlocked: true },
+  { id: 'topic-02', title: '电磁学', icon: Zap, chapters: 15, difficulty: 2, completed: false, unlocked: true },
+  { id: 'topic-03', title: '光学', icon: Eye, chapters: 10, difficulty: 2, completed: true, unlocked: true },
+  { id: 'topic-04', title: '热学', icon: ThermometerSun, chapters: 9, difficulty: 1, completed: true, unlocked: true },
+  { id: 'topic-05', title: '原子物理', icon: RadioTower, chapters: 11, difficulty: 3, completed: false, unlocked: true },
+  { id: 'topic-06', title: '波动', icon: Waves, chapters: 10, difficulty: 2, completed: false, unlocked: true },
+  { id: 'topic-07', title: '相对论', icon: Rocket, chapters: 8, difficulty: 3, completed: false, unlocked: false },
+  { id: 'topic-08', title: '误差分析', icon: Scale, chapters: 7, difficulty: 2, completed: false, unlocked: false },
+];
+
+const QUIZ_HISTORY = [
+  { id: 1, date: '07-12 14:30', accuracy: 92, reward: 180, passed: true },
+  { id: 2, date: '07-08 19:15', accuracy: 85, reward: 120, passed: true },
+  { id: 3, date: '07-05 10:20', accuracy: 76, reward: 60, passed: false },
+];
+
+export default function LearningHub() {
+  const [activeTopicId, setActiveTopicId] = useState('topic-02');
+  const [activeTab, setActiveTab] = useState<TopicTab>('ai-study');
+  const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [currentAnalysis, setCurrentAnalysis] = useState<{ point: string; question: string; answer: string; analysis: string } | null>(null);
+
+  const navigate = useNavigate();
+  const pushToast = useUIStore((s) => s.pushToast);
+
+  const activeTopicData = mockTopics.find((t) => t.id === activeTopicId) || mockTopics[0];
+  const activeMeta = TOPIC_META.find((t) => t.id === activeTopicId) || TOPIC_META[0];
+  const unlockedCount = TOPIC_META.filter((t) => t.unlocked).length;
+  const completedCount = TOPIC_META.filter((t) => t.completed).length;
+  const totalProgress = Math.round((completedCount / TOPIC_META.length) * 100);
+
+  return (
+    <div className="w-full space-y-6">
+      <section className="glass-card glass-card-hover p-8 rounded-[20px] relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-gradient-to-br from-mission-300/30 to-nova-300/20 blur-3xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-10 w-56 h-56 rounded-full bg-gradient-to-br from-growth-300/20 to-mission-300/20 blur-3xl pointer-events-none" />
+        
+        <div className="relative grid grid-cols-12 gap-6 items-center">
+          <div className="col-span-8">
+            <div className="mission-label mb-4">
+              <BookOpen size={12} />
+              LEARNING HUB · AI POWERED
+            </div>
+            <h1 className="text-4xl font-black tracking-tight mb-3">
+              <span className="text-gradient-mission">Learning Hub</span>
+              <span className="text-ink-800"> · AI 学习中枢</span>
+            </h1>
+            <p className="text-lg text-ink-600 font-medium leading-relaxed max-w-2xl">
+              从探索到精通，8大物理主题 AI 陪你一路升级。每一个知识点都是一颗星，每一次挑战都是成长的阶梯。
+            </p>
+            <div className="flex flex-wrap gap-3 mt-6">
+              <span className="chip-mission">
+                <Target size={12} /> 8 大主题体系
+              </span>
+              <span className="chip-growth">
+                <Trophy size={12} /> {completedCount} 个已通关
+              </span>
+              <span className="chip-nova">
+                <Sparkles size={12} /> AI 智能导师
+              </span>
+            </div>
+          </div>
+
+          <div className="col-span-4 flex items-center justify-end">
+            <div className="flex items-center gap-6">
+              <div className="relative">
+                <ProgressRing
+                  value={totalProgress}
+                  size={120}
+                  strokeWidth={10}
+                  trackColor="rgba(79,124,255,0.1)"
+                  indicatorColor="url(#progressGrad)"
+                  showLabel={false}
+                />
+                <svg width="0" height="0">
+                  <defs>
+                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#4F7CFF" />
+                      <stop offset="50%" stopColor="#8B5CF6" />
+                      <stop offset="100%" stopColor="#22C55E" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="text-3xl font-black text-gradient-mission tabular-nums">{totalProgress}</div>
+                  <div className="text-[10px] font-bold text-ink-500 tracking-widest uppercase">Total Progress</div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="chip-energy !px-3 !py-2">
+                  <Zap size={14} />
+                  当前学习：<span className="font-bold">{activeMeta.title}</span>
+                </div>
+                <div className="glass-card !py-2 !px-3 rounded-xl flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-growth-500 animate-pulse" />
+                  <span className="text-sm font-bold text-ink-700">
+                    已解锁 <span className="text-mission-600">{unlockedCount}</span>/8 主题
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-12 gap-6">
+        <aside className="col-span-3 space-y-3">
+          <div className="mission-label">
+            <Atom size={12} />
+            物理主题导航
+          </div>
+          {TOPIC_META.map((meta, idx) => {
+            const Icon = meta.icon;
+            const isActive = activeTopicId === meta.id;
+            return (
+              <motion.button
+                key={meta.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                onClick={() => meta.unlocked && setActiveTopicId(meta.id)}
+                disabled={!meta.unlocked}
+                className={cn(
+                  'w-full glass-card glass-card-hover p-4 text-left relative overflow-hidden group',
+                  isActive && 'ring-2 ring-mission-400 shadow-glowMission'
+                )}
+              >
+                {isActive && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-mission-50/60 to-nova-50/40 pointer-events-none" />
+                )}
+                <div className="relative flex items-start gap-3">
+                  <div
+                    className={cn(
+                      'w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-all',
+                      isActive
+                        ? 'bg-gradient-to-br from-mission-500 to-nova-500 text-white shadow-glowMission'
+                        : 'bg-gradient-to-br from-mission-50 to-mission-100/50 text-mission-600'
+                    )}
+                  >
+                    <Icon size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className={cn('font-bold text-base', isActive ? 'text-mission-700' : 'text-ink-800')}>
+                        {meta.title}
+                      </h3>
+                      {meta.completed && (
+                        <CheckCircle2 size={16} className="text-growth-500 shrink-0" />
+                      )}
+                      {!meta.unlocked && (
+                        <div className="chip-ink !py-0.5 !text-[10px]">
+                          <LockIcon /> 未解锁
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="chip-mission !py-0.5 !text-[10px]">
+                        {meta.chapters} 章
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            size={11}
+                            className={i < meta.difficulty ? 'text-alert-500 fill-alert-400' : 'text-ink-200'}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </aside>
+
+        <section className="col-span-9">
+          <div className="flex items-center gap-2 mb-4">
+            {([
+              { id: 'ai-study', label: 'AI Study Tabs', icon: Brain, color: 'mission' },
+              { id: 'knowledge', label: 'Knowledge Galaxy Mini', icon: Sparkles, color: 'nova' },
+              { id: 'quiz', label: 'Quiz Arena', icon: Trophy, color: 'energy' },
+            ] as const).map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all',
+                    isActive
+                      ? 'glass-card shadow-glowMission text-mission-700'
+                      : 'text-ink-500 hover:text-ink-700 hover:bg-white/50'
+                  )}
+                >
+                  <Icon size={16} className={isActive ? `text-${tab.color}-500` : ''} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeTab === 'ai-study' && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
+              <div className="glass-card p-6 rounded-2xl relative overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-gradient-to-br from-nova-300/30 to-mission-300/20 blur-2xl" />
+                <div className="relative flex items-start gap-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-2xl bg-nova-400/30 blur-lg animate-pulse" />
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-nova-500 via-nova-400 to-mission-400 flex items-center justify-center shadow-glowMission relative">
+                      <Sparkles size={28} className="text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="chip-nova mb-2 !py-1">AI PHYSICS TUTOR</div>
+                    <h3 className="text-xl font-black text-ink-800 mb-1">
+                      嗨！我是你的 AI 物理导师
+                    </h3>
+                    <p className="text-ink-600 font-medium">
+                      今天我们来攻克
+                      <span className="text-mission-600 font-bold mx-1">「{activeTopicData.title}」</span>
+                      — 掌握核心概念，做题不再难！
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {activeTopicData.aiMaterial.split('## ').filter(Boolean).map((section, idx) => {
+                  const [title, ...contentLines] = section.split('\n');
+                  const content = contentLines.join('\n').trim();
+                  const iconMap = [Target, Lightbulb, Brain, ChevronRight];
+                  const Icon = iconMap[idx] || BookOpen;
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.08 }}
+                      className="glass-card p-6 rounded-2xl border-2 border-dashed border-mission-200/60"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-mission-500 to-nova-500 flex items-center justify-center text-white">
+                          <Icon size={16} />
+                        </div>
+                        <h4 className="text-lg font-black text-ink-800">{title.trim()}</h4>
+                      </div>
+                      <div className="prose prose-sm max-w-none text-ink-700 prose-headings:text-ink-800 prose-strong:text-mission-700 prose-code:text-nova-700 prose-code:bg-nova-50 prose-code:px-1 prose-code:rounded">
+                        <ReactMarkdown>{content}</ReactMarkdown>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'knowledge' && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-12 gap-4"
+            >
+              <div className="col-span-7 glass-card p-6 rounded-2xl">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="mission-label">
+                    <Sparkles size={12} />
+                    知识点树
+                  </div>
+                  <span className="text-sm font-bold text-ink-500">{activeTopicData.title}</span>
+                </div>
+                <div className="space-y-2">
+                  {activeTopicData.outline.map((chapter, cIdx) => {
+                    const isExpanded = expandedChapter === chapter.chapter;
+                    return (
+                      <div key={cIdx} className="rounded-xl overflow-hidden">
+                        <button
+                          onClick={() => setExpandedChapter(isExpanded ? null : chapter.chapter)}
+                          className="w-full p-4 glass-card rounded-xl flex items-center justify-between hover:bg-mission-50/40 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-mission-100 to-mission-50 text-mission-600 flex items-center justify-center font-bold text-sm">
+                              {cIdx + 1}
+                            </div>
+                            <span className="font-bold text-ink-800">{chapter.chapter}</span>
+                            <span className="chip-ink !text-[10px]">{chapter.points.length} 个知识点</span>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronDown size={18} className="text-mission-500" />
+                          ) : (
+                            <ChevronRight size={18} className="text-ink-400" />
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="pl-12 pr-4 py-3 space-y-2"
+                          >
+                            {chapter.points.map((point, pIdx) => (
+                              <button
+                                key={pIdx}
+                                onClick={() => setSelectedPoint(point)}
+                                className={cn(
+                                  'w-full p-3 rounded-xl text-left flex items-center gap-3 transition-all',
+                                  selectedPoint === point
+                                    ? 'bg-gradient-to-r from-mission-500/10 to-nova-500/10 border border-mission-300/40'
+                                    : 'hover:bg-ink-50 border border-transparent'
+                                )}
+                              >
+                                <div className={cn(
+                                  'node-badge !w-7 !h-7 !text-[11px]',
+                                  pIdx % 3 === 0 ? 'done' : pIdx % 3 === 1 ? 'active' : 'pending'
+                                )}>
+                                  {pIdx + 1}
+                                </div>
+                                <span className={cn(
+                                  'font-medium text-sm',
+                                  selectedPoint === point ? 'text-mission-700 font-bold' : 'text-ink-700'
+                                )}>
+                                  {point}
+                                </span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="col-span-5 space-y-4">
+                <div className="glass-card p-5 rounded-2xl">
+                  <div className="chip-nova mb-3">
+                    <Lightbulb size={12} /> 典型例题卡
+                  </div>
+                  {selectedPoint ? (
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-ink-800">{selectedPoint}</h4>
+                      {[1, 2].map((qId) => (
+                        <div key={qId} className="p-4 rounded-xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100">
+                          <div className="text-xs font-bold text-mission-600 mb-2">例题 {qId}</div>
+                          <p className="text-sm text-ink-700 leading-relaxed">
+                            关于「{selectedPoint}」的典型问题：请结合核心概念分析物理过程，画出受力图/光路图/电路图辅助思考。
+                          </p>
+                          <button className="btn-mission mt-3 !py-2 !px-4 !text-sm w-full" onClick={() => {
+                            setCurrentAnalysis({
+                              point: selectedPoint || '',
+                              question: `关于「${selectedPoint}」的典型问题：请结合核心概念分析物理过程，画出受力图/光路图/电路图辅助思考。`,
+                              answer: qId === 1 ? '根据库仑定律 F = kQq/r²，结合电场强度 E = F/q = kQ/r²，可知电场强度与距离平方成反比。' : '根据电势能公式 W = qU，结合电势差与电场强度的关系 U = Ed，可推导电势能与位置的关系。',
+                              analysis: qId === 1 
+                                ? '【解析思路】首先明确库仑定律描述的是真空中两个点电荷之间的相互作用力，公式为 F = kQ₁Q₂/r²。当我们引入试探电荷 q 时，电场强度的定义为 E = F/q，将库仑力代入可得 E = kQ/r²（Q 为场源电荷）。这表明在点电荷产生的电场中，电场强度的大小与场源电荷成正比，与距离的平方成反比。\n\n【关键要点】\n• 电场强度是矢量，方向由正电荷指向负电荷\n• 点电荷电场呈球对称分布\n• 多个点电荷的电场遵循叠加原理\n\n【常见误区】\n• 混淆电场强度与电场力：E 与试探电荷无关，F 与试探电荷有关\n• 忽略距离的平方关系导致数量级错误'
+                                : '【解析思路】电势能的变化等于电场力做的功，即 ΔEp = -W电。电势差的定义为 U = W/q，因此 W = qU。对于匀强电场，U = Ed（d 为沿电场方向的距离），因此 W = qEd。\n\n【关键要点】\n• 电势能是相对量，需要选取零势能点\n• 电场力做正功，电势能减少；电场力做负功，电势能增加\n• 电势与电势差的关系：U_AB = φ_A - φ_B\n\n【常见误区】\n• 混淆电势与电势能\n• 忽略电势的正负号对做功方向的影响'
+                            });
+                            setShowAnalysis(true);
+                          }}>
+                            <PlayCircle size={14} /> 查看解析
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-ink-400">
+                      <Sparkles size={36} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">点击左侧知识点查看例题</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'quiz' && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-12 gap-4"
+            >
+              <div className="col-span-7 glass-card p-8 rounded-2xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-energy-500/5 via-transparent to-alert-500/5" />
+                <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-gradient-to-br from-energy-300/20 to-alert-300/10 blur-3xl" />
+                <div className="relative text-center py-6">
+                  <div className="inline-block relative mb-6">
+                      <div className="absolute inset-0 rounded-3xl bg-energy-400/30 blur-xl animate-pulse" />
+                      <button className="btn-energy relative !py-6 !px-10 !text-xl !rounded-2xl shadow-glowEnergy" onClick={() => { pushToast(`开始《${activeTopicData.title}》知识挑战 · 限时20分钟`, 'info'); setTimeout(() => navigate(`/theory/quiz/${activeTopicId}-quiz`), 100); }}>
+                        <Zap size={24} className="fill-white/30" />
+                        START TEST · 开始测验
+                      </button>
+                    </div>
+                  <h3 className="text-2xl font-black text-ink-800 mb-2">
+                    「{activeTopicData.title}」知识挑战
+                  </h3>
+                  <p className="text-ink-600 font-medium mb-6">
+                    10 道精选题目 · 80 分通关 · 最高 200⚡ 能量奖励
+                  </p>
+                  <div className="flex items-center justify-center gap-4">
+                    <div className="glass-card !py-3 !px-5 rounded-xl flex items-center gap-2">
+                      <Clock size={16} className="text-mission-500" />
+                      <span className="text-sm font-bold text-ink-700">限时 20 分钟</span>
+                    </div>
+                    <div className="glass-card !py-3 !px-5 rounded-xl flex items-center gap-2">
+                      <Target size={16} className="text-growth-500" />
+                      <span className="text-sm font-bold text-ink-700">通过率 82%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-5 space-y-3">
+                <div className="mission-label">
+                  <Trophy size={12} />
+                  最近测验成绩
+                </div>
+                {QUIZ_HISTORY.map((record, idx) => (
+                  <motion.div
+                    key={record.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className="glass-card glass-card-hover p-4 rounded-xl"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          'w-9 h-9 rounded-xl flex items-center justify-center',
+                          record.passed
+                            ? 'bg-gradient-to-br from-growth-400 to-growth-500 text-white'
+                            : 'bg-gradient-to-br from-alert-400 to-alert-500 text-white'
+                        )}>
+                          {record.passed ? <Trophy size={16} /> : <Target size={16} />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-ink-500">{record.date}</div>
+                          <div className="text-sm font-bold text-ink-800">
+                            {record.passed ? '已通过' : '未通过'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={cn(
+                          'text-2xl font-black tabular-nums',
+                          record.passed ? 'text-growth-600' : 'text-alert-600'
+                        )}>
+                          {record.accuracy}%
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-ink-100 overflow-hidden mb-3">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${record.accuracy}%` }}
+                        transition={{ delay: idx * 0.1 + 0.2, duration: 0.8 }}
+                        className={cn(
+                          'h-full rounded-full',
+                          record.passed
+                            ? 'bg-gradient-to-r from-growth-400 to-growth-500'
+                            : 'bg-gradient-to-r from-alert-400 to-alert-500'
+                        )}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-ink-500 font-medium">奖励</span>
+                      <span className="chip-energy !py-0.5 !text-[11px]">
+                        +{record.reward}⚡
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </section>
+      </div>
+
+      <AnimatePresence>
+        {showAnalysis && currentAnalysis && (
+          <motion.div
+            className="fixed inset-0 z-[150]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-gradient-to-br from-ink-900/60 via-mission-900/40 to-nova-900/50 backdrop-blur-md"
+              onClick={() => setShowAnalysis(false)}
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4 md:p-8">
+              <motion.div
+                className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-[24px] glass-card shadow-[0_30px_80px_-20px_rgba(15,23,42,0.35)]"
+                initial={{ opacity: 0, scale: 0.94, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+              >
+              <div className="flex items-center justify-between p-5 border-b border-ink-100/50">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-mission-50 text-mission-700 border border-mission-200">
+                    <BookOpen size={14} />
+                    <span className="text-[11px] font-bold tracking-wider">ANALYSIS</span>
+                  </div>
+                  <h2 className="text-lg font-black text-ink-900">{currentAnalysis.point} - 例题解析</h2>
+                </div>
+                <button
+                  onClick={() => setShowAnalysis(false)}
+                  className="w-8 h-8 rounded-full bg-ink-100 hover:bg-ink-200 flex items-center justify-center transition"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(85vh-72px)] space-y-5">
+                <div className="p-4 rounded-xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100">
+                  <div className="text-xs font-bold text-mission-600 mb-2 flex items-center gap-1">
+                    <HelpCircle size={14} /> 题目
+                  </div>
+                  <p className="text-sm text-ink-800 leading-relaxed">{currentAnalysis.question}</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-gradient-to-br from-growth-50/60 to-green-50/40 border border-growth-100">
+                  <div className="text-xs font-bold text-growth-600 mb-2 flex items-center gap-1">
+                    <CheckCircle2 size={14} /> 参考答案
+                  </div>
+                  <p className="text-sm text-ink-800 leading-relaxed">{currentAnalysis.answer}</p>
+                </div>
+
+                <div className="p-5 rounded-xl bg-white border border-ink-100">
+                  <div className="text-xs font-bold text-mission-600 mb-3 flex items-center gap-1">
+                    <Lightbulb size={14} /> 详细解析
+                  </div>
+                  <div className="text-sm text-ink-700 leading-relaxed whitespace-pre-line">
+                    {currentAnalysis.analysis}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 p-5 border-t border-ink-100/50">
+                <button
+                  onClick={() => setShowAnalysis(false)}
+                  className="btn-outline"
+                >
+                  关闭
+                </button>
+              </div>
+            </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    </svg>
+  );
+}
