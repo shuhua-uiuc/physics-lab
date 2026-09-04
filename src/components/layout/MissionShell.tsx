@@ -21,6 +21,9 @@ import {
   AlertTriangle,
   X,
   Camera,
+  Gauge,
+  ClipboardList,
+  Shield,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -60,6 +63,15 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'market', label: 'Research Marketplace', icon: ShoppingCart, to: '/recruit/market' },
   { id: 'league', label: 'Research League', icon: Trophy, to: '/coins' },
   { id: 'achievement', label: 'Achievement Hall', icon: Medal, to: '/showcase' },
+];
+
+/** 教师 / 管理员控制台专属导航（学生端不可见） */
+const TEACHER_NAV_ITEMS: NavItem[] = [
+  { id: 't-overview', label: 'Mission Overview', icon: Gauge, to: '/teacher/overview' },
+  { id: 't-groups', label: 'Fleet Management', icon: Users, to: '/teacher/groups' },
+  { id: 't-roster', label: 'Student Roster', icon: ClipboardList, to: '/teacher/roster' },
+  { id: 't-question', label: 'Question Bank', icon: BookOpen, to: '/teacher/question-bank' },
+  { id: 't-safety', label: 'Safety Center', icon: ShieldCheck, to: '/teacher/safety' },
 ];
 
 function RequireAuth({ children, allowRoles }: { children: ReactNode; allowRoles?: Array<'student' | 'teacher' | 'admin'> }) {
@@ -265,8 +277,11 @@ function NavRail() {
   const { role } = useAuthStore();
   const [hovered, setHovered] = useState<string | null>(null);
 
+  // 教师使用控制台专属导航，学生使用学习端导航
+  const baseItems: NavItem[] =
+    role === 'teacher' || role === 'admin' ? TEACHER_NAV_ITEMS : NAV_ITEMS;
   const adminItems: NavItem[] = role === 'admin'
-    ? [{ id: 'admin', label: 'Admin Console', icon: ShieldCheck, to: '/admin' }]
+    ? [{ id: 'admin', label: 'Admin Console', icon: Shield, to: '/admin' }]
     : [];
 
   return (
@@ -279,7 +294,7 @@ function NavRail() {
         height: 'calc(100vh - 100px)',
       }}
     >
-      {[...NAV_ITEMS, ...adminItems].map((item, idx) => {
+      {[...baseItems, ...adminItems].map((item, idx) => {
         const Icon = item.icon;
         const active = location.pathname.startsWith(item.to) || (idx === 0 && location.pathname === '/');
         const isHovered = hovered === item.id;
