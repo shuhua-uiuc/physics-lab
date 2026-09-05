@@ -25,9 +25,10 @@ import {
 } from 'lucide-react';
 import MissionShell from '@/components/layout/MissionShell';
 import { useGroupStore } from '@/store/groupStore';
+import { classesApi } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
 import AvatarStack from '@/components/ui/AvatarStack';
-import type { User } from '@/data/mockData';
+import type { User, SchoolClass } from '@/data/mockData';
 
 type DialogKind = 'reset' | 'new' | 'coins' | 'rename' | 'members' | 'disband' | null;
 
@@ -94,6 +95,33 @@ export default function TeacherGroups() {
   }, [users]);
 
   const unassigned = useMemo(() => users.filter((u) => !u.groupId), [users]);
+
+  // 待分配学生按班级分组呈现
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  useEffect(() => {
+    classesApi
+      .list()
+      .then(setClasses)
+      .catch(() => {});
+  }, []);
+
+  const unassignedByClass = useMemo(() => {
+    const buckets: { classId: string; className: string; students: User[] }[] = [];
+    const idx: Record<string, number> = {};
+    for (const u of unassigned) {
+      const key = u.classId || 'unknown';
+      if (!(key in idx)) {
+        idx[key] = buckets.length;
+        buckets.push({
+          classId: key,
+          className: u.classId ? classes.find((c) => c.id === u.classId)?.name || u.classId : '未归属班级',
+          students: [],
+        });
+      }
+      buckets[idx[key]].students.push(u);
+    }
+    return buckets;
+  }, [unassigned, classes]);
 
   const rankedGroups = useMemo(
     () => [...groups].sort((a, b) => b.totalCoins - a.totalCoins),
@@ -263,29 +291,40 @@ export default function TeacherGroups() {
                 <p className="text-[12px] text-ink-500">注册但尚未加入小组的研究员，可直接分配到目标小组</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {unassigned.map((u) => (
-                <div key={u.id} className="flex items-center gap-2.5 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
-                  <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm bg-white object-cover" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-bold text-ink-800 truncate max-w-[110px]">{u.name}</div>
-                    <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
+            <div className="space-y-4">
+              {unassignedByClass.map((bucket) => (
+                <div key={bucket.classId}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="chip-mission !py-0.5 !px-2.5 !text-[10.5px]">{bucket.className}</span>
+                    <span className="text-[11px] font-semibold text-ink-400">{bucket.students.length} 人待分配</span>
+                    <div className="flex-1 h-px bg-ink-100" />
                   </div>
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        assignUserGroup(u.id, e.target.value, 'member');
-                        flashToast(`➕ ${u.name} 已分配到 ${groups.find((g) => g.id === e.target.value)?.name || ''}`);
-                      }
-                    }}
-                    className="bg-mission-50/70 border border-mission-200 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-mission-700 focus:outline-none focus:ring-2 focus:ring-mission-400/30 cursor-pointer"
-                  >
-                    <option value="">分配到…</option>
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
+                  <div className="flex flex-wrap gap-3">
+                    {bucket.students.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2.5 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
+                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm bg-white object-cover" />
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-bold text-ink-800 truncate max-w-[110px]">{u.name}</div>
+                          <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
+                        </div>
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              assignUserGroup(u.id, e.target.value, 'member');
+                              flashToast(`➕ ${u.name} 已分配到 ${groups.find((g) => g.id === e.target.value)?.name || ''}`);
+                            }
+                          }}
+                          className="bg-mission-50/70 border border-mission-200 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-mission-700 focus:outline-none focus:ring-2 focus:ring-mission-400/30 cursor-pointer"
+                        >
+                          <option value="">分配到…</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      </div>
                     ))}
-                  </select>
+                  </div>
                 </div>
               ))}
             </div>
