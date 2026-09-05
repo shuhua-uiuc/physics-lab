@@ -9,7 +9,6 @@ import {
 } from 'react-router-dom';
 import {
   Home as HomeIcon,
-  Library,
   ShieldCheck,
   AlertTriangle,
   Sparkles,
@@ -39,6 +38,7 @@ import TeacherGroups from '@/pages/TeacherGroups';
 import AdminConsole from '@/pages/AdminConsole';
 import StudentRoster from '@/pages/StudentRoster';
 import TeacherSafety from '@/pages/TeacherSafety';
+import TeacherQuestionBank from '@/pages/TeacherQuestionBank';
 import GroupCommunicator from '@/pages/GroupCommunicator';
 
 import QuizPage from '@/pages/QuizPage';
@@ -145,22 +145,6 @@ function NotFound() {
         </div>
       </div>
     </div>
-  );
-}
-
-function TeacherQBPlaceholder() {
-  return (
-    <Placeholder
-      title="题库审核中心"
-      subtitle="所有学生创作的高质量题库，等待你的审阅与发布。"
-      icon={Library}
-      tint="mission"
-    >
-      <span className="chip-mission inline-flex mt-2 gap-2">
-        <Sparkles className="w-4 h-4" />
-        演示模式：所有小组挑战自动通过
-      </span>
-    </Placeholder>
   );
 }
 
@@ -421,7 +405,7 @@ export default function App() {
           element={
             <TeacherOnly>
               <MissionShell>
-                <TeacherQBPlaceholder />
+                <TeacherQuestionBank />
               </MissionShell>
             </TeacherOnly>
           }

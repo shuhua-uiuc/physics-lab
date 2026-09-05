@@ -61,6 +61,21 @@ export interface Question {
   safetyCategory?: SafetyCategory;
 }
 
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+
+/** 可供审核的题目（学生提交或教师上传），带审核状态、教师反馈与修改标记 */
+export interface ReviewableQuestion extends Question {
+  submittedBy: string | null;        // 提交者用户 id，null 表示教师上传
+  submittedByName: string;           // 提交者名称
+  submittedAt: string;               // ISO 时间
+  reviewStatus: ReviewStatus;
+  teacherFeedback?: string;          // 教师评价（学生可见）
+  feedbackAt?: string;
+  edited?: boolean;                  // 教师是否修改过原题
+  editedBy?: string;
+}
+
+
 export interface QuizSession {
   id: string;
   topicId: string;

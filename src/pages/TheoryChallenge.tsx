@@ -22,7 +22,10 @@ import {
 import { useTheoryStore } from '@/store/theoryStore';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
+import { useQuestionBankStore } from '@/store/questionBankStore';
+import { useUIStore } from '@/store/uiStore';
 import type { Challenge } from '@/types';
+import { cn } from '@/lib/utils';
 
 const CoinBadge = ({ amount, size = 'md', showSymbol = true, className = '' }: { amount: number; size?: 'sm' | 'md' | 'lg'; showSymbol?: boolean; className?: string }) => {
   const sizeMap = { sm: 'h-5 text-xs px-1.5 gap-0.5', md: 'h-7 text-sm px-2 gap-1', lg: 'h-10 text-base px-3 gap-1.5' };
@@ -48,12 +51,13 @@ const Chip = ({ children, variant = 'physics', className = '' }: { children: Rea
   return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${vmap[variant]} ${className}`}>{children}</span>;
 };
 
-type TabKey = 'open' | 'created' | 'joined';
+type TabKey = 'open' | 'created' | 'joined' | 'mine';
 
 const TABS: { key: TabKey; label: string; icon: any; badge?: boolean }[] = [
   { key: 'open', label: '可接受挑战', icon: Swords, badge: true },
   { key: 'created', label: '我发起的挑战', icon: Rocket },
   { key: 'joined', label: '我参与的挑战', icon: Trophy },
+  { key: 'mine', label: '我的出题', icon: UserCircle2 },
 ];
 
 function useCountdown(target: Date) {
@@ -102,8 +106,45 @@ export default function TheoryChallenge() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { topics, questions, challenges, createChallenge, getTopicQuestions } = useTheoryStore();
-  const { groupId, userId, role } = useAuthStore();
+  const { groupId, userId, role, name } = useAuthStore();
   const { groups, getGroupById, getUserById } = useGroupStore();
+  const qbQuestions = useQuestionBankStore((s) => s.questions);
+  const submitQuestion = useQuestionBankStore((s) => s.submitQuestion);
+  const pushToast = useUIStore((s) => s.pushToast);
+
+  // 我的出题：提交表单状态
+  const [qForm, setQForm] = useState<{ type: 'single' | 'multiple' | 'judge'; stem: string; options: string[]; answer: number | number[] | boolean; kp: string }>({
+    type: 'single', stem: '', options: ['', '', '', ''], answer: 0, kp: '',
+  });
+  const [qFormErr, setQFormErr] = useState('');
+
+  const mySubmitted = useMemo(
+    () => (userId ? qbQuestions.filter((q) => q.submittedBy === userId) : []),
+    [qbQuestions, userId]
+  );
+
+  const resetQForm = () => setQForm({ type: 'single', stem: '', options: ['', '', '', ''], answer: 0, kp: '' });
+
+  const handleSubmitQuestion = () => {
+    if (!userId) { pushToast('请先登录', 'error'); return; }
+    const stem = qForm.stem.trim();
+    if (!stem) return setQFormErr('请填写题干');
+    const trimmed = qForm.options.map((o) => o.trim());
+    const kept = trimmed.filter(Boolean);
+    if (kept.length < 2) return setQFormErr('至少 2 个有效选项');
+    let answer: number | number[] | boolean = qForm.answer;
+    if (qForm.type === 'single') {
+      const idx = trimmed.indexOf(kept[typeof answer === 'number' ? answer : 0] as string);
+      answer = idx < 0 ? 0 : idx;
+    } else if (qForm.type === 'multiple') {
+      const arr = Array.isArray(answer) ? answer : [];
+      answer = arr.map((i) => trimmed.indexOf(kept[i])).filter((n) => n >= 0);
+    }
+    submitQuestion({ type: qForm.type, stem, options: kept, answer, knowledgePoint: qForm.kp.trim(), difficulty: 1 }, userId, name || '学生');
+    pushToast('题目已提交，等待教师审核', 'success');
+    resetQForm();
+    setQFormErr('');
+  };
 
   const myGid = groupId || (role === 'teacher' ? groups[0]?.id : undefined);
 
@@ -444,6 +485,110 @@ export default function TheoryChallenge() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {tab === 'mine' && (
+          <div className="space-y-5">
+            {/* 提交新题表单 */}
+            <div className="card-base p-6">
+              <h3 className="font-serif font-bold text-lg text-physics-900 mb-4 flex items-center gap-2">
+                <Plus size={18} /> 提交一道新题
+              </h3>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  {(['single', 'multiple', 'judge'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setQForm({ ...qForm, type: t, options: t === 'judge' ? ['正确', '错误'] : qForm.options, answer: t === 'judge' ? true : (t === 'multiple' ? [] : 0) })}
+                      className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition', qForm.type === t ? 'bg-mission-500 text-white border-transparent' : 'bg-white text-ink-600 border-ink-200 hover:border-mission-300')}
+                    >
+                      {t === 'single' ? '单选题' : t === 'multiple' ? '多选题' : '判断题'}
+                    </button>
+                  ))}
+                </div>
+                <textarea value={qForm.stem} onChange={(e) => setQForm({ ...qForm, stem: e.target.value })} className="w-full border border-ink-200 rounded-xl px-3 py-2 text-sm focus:border-mission-400 focus:ring-2 focus:ring-mission-100 outline-none resize-y min-h-[60px]" placeholder="输入题干……" />
+                {qForm.type !== 'judge' && qForm.options.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (qForm.type === 'single') setQForm({ ...qForm, answer: i });
+                        else {
+                          const arr = Array.isArray(qForm.answer) ? [...qForm.answer] : [];
+                          setQForm({ ...qForm, answer: arr.includes(i) ? arr.filter((n) => n !== i) : [...arr, i] });
+                        }
+                      }}
+                      className={cn('w-6 h-6 rounded-full shrink-0 border-2 flex items-center justify-center text-white text-[10px]', (qForm.type === 'single' ? qForm.answer === i : Array.isArray(qForm.answer) && qForm.answer.includes(i)) ? 'bg-growth-500 border-growth-500' : 'border-ink-200 text-transparent')}
+                    >
+                      ✓
+                    </button>
+                    <span className="text-xs text-ink-400 w-5">{String.fromCharCode(65 + i)}.</span>
+                    <input value={opt} onChange={(e) => { const o = [...qForm.options]; o[i] = e.target.value; setQForm({ ...qForm, options: o }); }} className="flex-1 border border-ink-200 rounded-lg px-2 py-1.5 text-sm focus:border-mission-400 outline-none" placeholder={`选项 ${String.fromCharCode(65 + i)}`} />
+                  </div>
+                ))}
+                {qForm.type === 'judge' && (
+                  <div className="flex gap-2">
+                    {[true, false].map((v) => (
+                      <button key={String(v)} onClick={() => setQForm({ ...qForm, answer: v })} className={cn('flex-1 py-2 rounded-lg border text-sm font-semibold', qForm.answer === v ? 'bg-growth-50 border-growth-300 text-growth-700' : 'bg-white border-ink-200 text-ink-500')}>
+                        {v ? '✓ 正确' : '✗ 错误'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input value={qForm.kp} onChange={(e) => setQForm({ ...qForm, kp: e.target.value })} className="w-full border border-ink-200 rounded-xl px-3 py-2 text-sm focus:border-mission-400 outline-none" placeholder="知识点（可选）" />
+                {qFormErr && <p className="text-xs text-danger-600">{qFormErr}</p>}
+                <button onClick={handleSubmitQuestion} className="btn-mission w-full">
+                  <Plus size={15} /> 提交题目（等待教师审核）
+                </button>
+              </div>
+            </div>
+
+            {/* 我提交的题目 + 教师反馈 */}
+            <div>
+              <h3 className="font-serif font-bold text-lg text-physics-900 mb-3">我提交的题目（{mySubmitted.length}）</h3>
+              {mySubmitted.length === 0 ? (
+                <div className="card-base p-12 text-center text-ink-400">还没有提交过题目</div>
+              ) : (
+                <div className="space-y-3">
+                  {mySubmitted.map((q) => {
+                    const sm = {
+                      pending: { label: '待审核', cls: 'bg-alert-100 text-alert-700' },
+                      approved: { label: '已通过', cls: 'bg-growth-100 text-growth-700' },
+                      rejected: { label: '已驳回', cls: 'bg-danger-100 text-danger-700' },
+                    }[q.reviewStatus];
+                    return (
+                      <div key={q.id} className="card-base p-5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-semibold', sm.cls)}>{sm.label}</span>
+                          <span className="text-[11px] text-ink-400">{q.type === 'single' ? '单选' : q.type === 'multiple' ? '多选' : '判断'}</span>
+                          {q.edited && <span className="text-[11px] text-mission-600">· 教师已修改</span>}
+                          <span className="text-[11px] text-ink-300 ml-auto">{new Date(q.submittedAt).toLocaleDateString('zh-CN')}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-physics-900 mb-2">{q.stem}</p>
+                        <div className="space-y-1 mb-2">
+                          {q.options.map((opt, i) => {
+                            const correct = Array.isArray(q.answer) ? q.answer.includes(i) : q.answer === i;
+                            return (
+                              <div key={i} className={cn('px-2 py-1 rounded text-xs', correct ? 'bg-growth-50 text-ink-700 font-semibold' : 'text-ink-500')}>
+                                {String.fromCharCode(65 + i)}. {opt}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {q.teacherFeedback ? (
+                          <div className="p-2.5 rounded-lg bg-mission-50 border border-mission-100 text-xs text-ink-600">
+                            <b className="text-mission-700">教师评价：</b>{q.teacherFeedback}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-ink-300">暂无教师评价</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
