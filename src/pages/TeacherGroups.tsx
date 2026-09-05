@@ -128,6 +128,27 @@ export default function TeacherGroups() {
     [groups]
   );
 
+  // 按班级分组展示小组（组内按能量币排序）
+  const groupsByClass = useMemo(() => {
+    const buckets: { classId: string; className: string; groups: typeof groups }[] = [];
+    const idx: Record<string, number> = {};
+    for (const g of groups) {
+      const key = g.classId || 'unknown';
+      if (!(key in idx)) {
+        idx[key] = buckets.length;
+        buckets.push({
+          classId: key,
+          className: g.classId ? classes.find((c) => c.id === g.classId)?.name || g.classId : '未归属班级',
+          groups: [],
+        });
+      }
+      buckets[idx[key]].groups.push(g);
+    }
+    // 组内按能量币降序
+    buckets.forEach((b) => b.groups.sort((a, b2) => b2.totalCoins - a.totalCoins));
+    return buckets;
+  }, [groups, classes]);
+
   const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
   const activeMembers = activeGroupId ? usersByGroup[activeGroupId] || [] : [];
 
@@ -390,17 +411,25 @@ export default function TeacherGroups() {
             还没有任何小组，点击右上角「新建小组」开始编组。
           </div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.12 }}
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
-          >
-            {rankedGroups.map((g, idx) => {
-              const members = usersByGroup[g.id] || [];
-              const leader = members.find((u) => u.role === 'leader') || members[0];
-              const theme = FLEET_THEMES[idx % FLEET_THEMES.length];
-              const maxCoins = Math.max(1, ...rankedGroups.map((x) => x.totalCoins));
+          <div className="space-y-10">
+            {groupsByClass.map((bucket) => (
+              <section key={bucket.classId}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-1 h-7 rounded-full bg-gradient-to-b from-mission-400 to-mission-600" />
+                  <h2 className="text-[19px] font-extrabold text-ink-800">
+                    {bucket.className}
+                    <span className="ml-2 text-[13px] font-semibold text-ink-400">
+                      {bucket.groups.length} 个小组
+                    </span>
+                  </h2>
+                  <div className="flex-1 h-px bg-gradient-to-r from-ink-100 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {bucket.groups.map((g, idx) => {
+                    const members = usersByGroup[g.id] || [];
+                    const leader = members.find((u) => u.role === 'leader') || members[0];
+                    const theme = FLEET_THEMES[idx % FLEET_THEMES.length];
+                    const maxCoins = Math.max(1, ...bucket.groups.map((x) => x.totalCoins));
               return (
                 <motion.article
                   key={g.id}
@@ -531,9 +560,12 @@ export default function TeacherGroups() {
                     </div>
                   </div>
                 </motion.article>
-              );
-            })}
-          </motion.div>
+                  );
+                })}
+                </div>
+              </section>
+            ))}
+          </div>
         )}
       </div>
 
