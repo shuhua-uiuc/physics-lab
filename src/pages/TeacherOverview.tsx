@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Radar,
   Users,
@@ -23,6 +23,7 @@ import {
   Send,
   LineChart,
   Activity,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -39,6 +40,7 @@ import {
 } from 'recharts';
 import MissionShell from '@/components/layout/MissionShell';
 import { useGroupStore } from '@/store/groupStore';
+import { useUIStore } from '@/store/uiStore';
 import { bootstrapFromApi } from '@/lib/bootstrap';
 import { CoinSource } from '@/data/mockData';
 import { cn } from '@/lib/utils';
@@ -105,10 +107,75 @@ const FROZEN_PROJECTS = [
   { id: 'fp-2', name: '密立根油滴 · 组6', reason: '实验器材校准单丢失', frozenDays: 4, group: 'g-6' },
 ];
 
-const PENDING_QUESTIONS = [
-  { id: 'pq-1', author: '杨静', subject: '电磁学', stem: '关于动生电动势方向判断，以下说法正确的是？', difficulty: 2 },
-  { id: 'pq-2', author: '赵磊', subject: '光学', stem: '以下哪种现象可用于说明光的横波性质？', difficulty: 2 },
-  { id: 'pq-3', author: '马超', subject: '近代物理', stem: '康普顿效应主要验证了光的哪种特性？', difficulty: 3 },
+interface PendingQuestion {
+  id: string;
+  author: string;
+  subject: string;
+  difficulty: 1 | 2 | 3;
+  type: 'single' | 'multiple' | 'judge';
+  stem: string;
+  options: string[];
+  answer: number | number[] | boolean;
+  knowledgePoint: string;
+  analysis: string;
+  /** 题目示意图（可选） */
+  image?: string;
+}
+
+const PENDING_QUESTIONS: PendingQuestion[] = [
+  {
+    id: 'pq-1',
+    author: '杨静',
+    subject: '电磁学',
+    difficulty: 2,
+    type: 'single',
+    stem: '如图所示，导体棒 ab 在匀强磁场中沿光滑导轨向右匀速运动。关于回路中感应电流方向的判断，以下说法正确的是？',
+    image:
+      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=physics%20textbook%20vector%20diagram%2C%20conducting%20metal%20rod%20sliding%20on%20two%20parallel%20copper%20rails%2C%20uniform%20magnetic%20field%20into%20the%20page%2C%20closed%20circuit%20with%20resistor%20and%20galvanometer%2C%20labeled%20arrows%20for%20velocity%20v%20and%20magnetic%20field%20B%2C%20clean%20educational%20illustration%2C%20white%20background&image_size=landscape_4_3',
+    options: [
+      'A. 只能用左手定则判断',
+      'B. 与导体运动方向无关',
+      'C. 可用右手定则判断，b 端相当于电源正极',
+      'D. 方向总与磁场方向相同',
+    ],
+    answer: 2,
+    knowledgePoint: '电磁感应 · 动生电动势',
+    analysis:
+      '导体棒切割磁感线产生动生电动势，用右手定则判断：磁感线穿过掌心，拇指指向运动方向，四指指向即感应电流方向（高电势端）。结果与楞次定律一致，b 端为高电势，相当于电源正极。',
+  },
+  {
+    id: 'pq-2',
+    author: '赵磊',
+    subject: '光学',
+    difficulty: 2,
+    type: 'single',
+    stem: '以下哪种现象可用于说明光的横波性质？',
+    options: ['A. 光的干涉', 'B. 光的衍射', 'C. 光的偏振', 'D. 光的色散'],
+    answer: 2,
+    knowledgePoint: '物理光学 · 偏振',
+    analysis:
+      '偏振是横波特有的现象，纵波不能发生偏振。光的偏振现象有力地说明光是横波；干涉和衍射仅能说明光的波动性。',
+  },
+  {
+    id: 'pq-3',
+    author: '马超',
+    subject: '近代物理',
+    difficulty: 3,
+    type: 'single',
+    stem: '如图所示为康普顿效应示意图，散射光波长随散射角增大而增大。该实验主要验证了光的哪种特性？',
+    image:
+      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=physics%20textbook%20vector%20diagram%20of%20Compton%20scattering%2C%20incident%20X-ray%20photon%20hitting%20a%20free%20electron%2C%20scattered%20photon%20and%20recoil%20electron%20with%20scattering%20angle%20theta%2C%20labeled%20wavelengths%20lambda%2C%20clean%20educational%20illustration%2C%20white%20background&image_size=landscape_4_3',
+    options: [
+      'A. 光具有粒子性',
+      'B. 光具有波动性',
+      'C. 光具有偏振性',
+      'D. 光具有衍射性',
+    ],
+    answer: 0,
+    knowledgePoint: '近代物理 · 光量子',
+    analysis:
+      '康普顿效应中散射光波长变长的现象无法用经典波动理论解释，必须把光子看作具有能量和动量的粒子与电子发生弹性碰撞，因此验证了光的粒子性。',
+  },
 ];
 
 const OVERDUE_RECRUITS = [
@@ -144,9 +211,20 @@ function SwordsIcon(props: any) {
 export default function TeacherOverview() {
   const navigate = useNavigate();
   const { groups, users } = useGroupStore();
+  const pushToast = useUIStore((s) => s.pushToast);
   const [tab, setTab] = useState<TabKey>('overview');
   const totalStudents = users.length;
   const totalGroups = groups.length;
+
+  // 待审核题库：本地状态（支持通过后移除）
+  const [pendingQs, setPendingQs] = useState<PendingQuestion[]>(PENDING_QUESTIONS);
+  const [detailQ, setDetailQ] = useState<PendingQuestion | null>(null);
+
+  const approveQuestion = (id: string) => {
+    setPendingQs((prev) => prev.filter((q) => q.id !== id));
+    setDetailQ((prev) => (prev && prev.id === id ? null : prev));
+    pushToast('题目已通过审核，纳入挑战题库', 'success');
+  };
 
   // 挂载时从后端拉取最新数据，确保总人数等统计实时更新
   useEffect(() => {
@@ -478,13 +556,18 @@ export default function TeacherOverview() {
                 <div>
                   <h3 className="font-bold text-ink-800 text-[15px] flex items-center gap-1.5">
                     待审核题库
-                    <span className="chip-mission !py-0.5 !px-2 !text-[10px]">{PENDING_QUESTIONS.length} 条</span>
+                    <span className="chip-mission !py-0.5 !px-2 !text-[10px]">{pendingQs.length} 条</span>
                   </h3>
                   <p className="text-[11px] text-ink-400">一键通过将立即纳入挑战题库</p>
                 </div>
               </div>
               <div className="space-y-3 relative z-10">
-                {PENDING_QUESTIONS.map((q, i) => {
+                {pendingQs.length === 0 ? (
+                  <div className="py-8 text-center text-[13px] text-ink-400">
+                    全部处理完毕，暂无待审核题目
+                  </div>
+                ) : (
+                  pendingQs.map((q, i) => {
                   const diffColors = ['', 'chip-growth', 'chip-energy', 'chip-danger'];
                   const diffLabel = ['', '简单', '中等', '困难'];
                   return (
@@ -508,15 +591,24 @@ export default function TeacherOverview() {
                         {q.stem}
                       </p>
                       <div className="flex gap-2">
-                        <button className="btn-growth flex-1 !py-1.5 !px-3 text-[11.5px]">
+                        <button
+                          onClick={() => approveQuestion(q.id)}
+                          className="btn-growth flex-1 !py-1.5 !px-3 text-[11.5px]"
+                        >
                           <CheckCircle2 size={12} />
                           通过
                         </button>
-                        <button className="btn-ghost !py-1.5 !px-3 text-[11.5px]">详情</button>
+                        <button
+                          onClick={() => setDetailQ(q)}
+                          className="btn-ghost !py-1.5 !px-3 text-[11.5px]"
+                        >
+                          详情
+                        </button>
                       </div>
                     </motion.div>
                   );
-                })}
+                  })
+                )}
               </div>
             </motion.section>
 
@@ -573,6 +665,123 @@ export default function TeacherOverview() {
           </div>
         </div>
       </div>
+
+      {/* 题目详情弹窗 */}
+      <AnimatePresence>
+        {detailQ && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setDetailQ(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="glass-card w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-[24px] p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 头部信息 */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="chip-mission !py-0.5 !px-2 !text-[10px]">{detailQ.subject}</span>
+                  <span
+                    className={cn(
+                      ['', 'chip-growth', 'chip-energy', 'chip-danger'][detailQ.difficulty],
+                      '!py-0.5 !px-2 !text-[10px]'
+                    )}
+                  >
+                    {['', '简单', '中等', '困难'][detailQ.difficulty]}
+                  </span>
+                  <span className="chip-nova !py-0.5 !px-2 !text-[10px]">
+                    {detailQ.type === 'single' ? '单选题' : detailQ.type === 'multiple' ? '多选题' : '判断题'}
+                  </span>
+                  <span className="text-[11px] text-ink-400">by {detailQ.author}</span>
+                </div>
+                <button
+                  onClick={() => setDetailQ(null)}
+                  className="w-8 h-8 rounded-lg hover:bg-ink-100 flex items-center justify-center text-ink-400 shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* 题干 */}
+              <h4 className="text-[15px] font-bold text-ink-900 leading-relaxed mb-3">{detailQ.stem}</h4>
+
+              {/* 题目示意图 */}
+              {detailQ.image && (
+                <img
+                  src={detailQ.image}
+                  alt="题目示意图"
+                  className="w-full rounded-xl border border-ink-100 bg-white mb-3"
+                />
+              )}
+
+              {/* 选项（正确项高亮） */}
+              {detailQ.type !== 'judge' && (
+                <div className="space-y-2 mb-4">
+                  {detailQ.options.map((opt, i) => {
+                    const isCorrect = Array.isArray(detailQ.answer)
+                      ? detailQ.answer.includes(i)
+                      : detailQ.answer === i;
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-2 rounded-xl border text-[13px]',
+                          isCorrect
+                            ? 'bg-growth-50 border-growth-300 text-ink-800 font-semibold'
+                            : 'bg-white/60 border-ink-100 text-ink-600'
+                        )}
+                      >
+                        {isCorrect && <CheckCircle2 size={14} className="text-growth-500 shrink-0" />}
+                        {opt}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 答案与解析 */}
+              <div className="p-3.5 rounded-xl bg-mission-50/60 border border-mission-100 space-y-2 mb-5">
+                <div className="text-[12.5px] font-bold text-mission-700 flex items-center gap-1.5">
+                  <CheckCircle2 size={14} />
+                  正确答案：
+                  {detailQ.type === 'judge'
+                    ? detailQ.answer === true
+                      ? '正确'
+                      : '错误'
+                    : Array.isArray(detailQ.answer)
+                      ? detailQ.answer.map((i) => String.fromCharCode(65 + i)).join('、')
+                      : String.fromCharCode(65 + (detailQ.answer as number))}
+                </div>
+                <div className="text-[12.5px] text-ink-600 leading-relaxed">
+                  <b className="text-ink-800">解析：</b>
+                  {detailQ.analysis}
+                </div>
+                <div className="text-[11px] text-ink-400">知识点：{detailQ.knowledgePoint}</div>
+              </div>
+
+              {/* 操作 */}
+              <div className="flex gap-2">
+                <button className="btn-ghost-mission flex-1" onClick={() => setDetailQ(null)}>
+                  关闭
+                </button>
+                <button
+                  className="btn-growth flex-1 inline-flex items-center justify-center gap-1.5"
+                  onClick={() => approveQuestion(detailQ.id)}
+                >
+                  <CheckCircle2 size={14} />
+                  通过审核
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </MissionShell>
   );
 }
