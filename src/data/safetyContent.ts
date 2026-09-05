@@ -199,7 +199,7 @@ export const safetyNotices: Record<SafetyCategory, SafetyNoticeContent> = {
   },
 };
 
-const categoryNameMap: Record<SafetyCategory, string> = {
+export const categoryNameMap: Record<SafetyCategory, string> = {
   electric: '电气',
   thermal: '热学',
   optical: '光学',

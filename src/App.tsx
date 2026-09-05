@@ -38,6 +38,7 @@ import TeacherOverview from '@/pages/TeacherOverview';
 import TeacherGroups from '@/pages/TeacherGroups';
 import AdminConsole from '@/pages/AdminConsole';
 import StudentRoster from '@/pages/StudentRoster';
+import TeacherSafety from '@/pages/TeacherSafety';
 import GroupCommunicator from '@/pages/GroupCommunicator';
 
 import QuizPage from '@/pages/QuizPage';
@@ -158,22 +159,6 @@ function TeacherQBPlaceholder() {
       <span className="chip-mission inline-flex mt-2 gap-2">
         <Sparkles className="w-4 h-4" />
         演示模式：所有小组挑战自动通过
-      </span>
-    </Placeholder>
-  );
-}
-
-function TeacherSafetyPlaceholder() {
-  return (
-    <Placeholder
-      title="安全题库维护"
-      subtitle="内置 40+ 道不同实验场景的标准化安全考核题。"
-      icon={ShieldCheck}
-      tint="growth"
-    >
-      <span className="chip-growth inline-flex mt-2 gap-2">
-        <Sparkles className="w-4 h-4" />
-        演示中使用内置安全题库
       </span>
     </Placeholder>
   );
@@ -446,7 +431,7 @@ export default function App() {
           element={
             <TeacherOnly>
               <MissionShell>
-                <TeacherSafetyPlaceholder />
+                <TeacherSafety />
               </MissionShell>
             </TeacherOnly>
           }

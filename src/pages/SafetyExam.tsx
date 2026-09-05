@@ -2,12 +2,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProjectStore } from '@/store/projectStore';
 import { useTheoryStore } from '@/store/theoryStore';
+import { useSafetyStore } from '@/store/safetyStore';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import Checkbox from '@/components/ui/Checkbox';
 import ProgressRing from '@/components/ui/ProgressRing';
 import ReactMarkdown from 'react-markdown';
-import { safetyNotices, sampleExamQuestions, buildSafetyQuestions } from '@/data/safetyContent';
+import { safetyNotices, sampleExamQuestions } from '@/data/safetyContent';
 import { Question, SafetyCategory } from '@/data/mockData';
 import {
   Shield, AlertTriangle, CheckCircle, BookOpen, ClipboardCheck, Unlock,
@@ -46,6 +47,7 @@ export default function SafetyExam() {
   const updateStatus = useProjectStore((s) => s.updateStatus);
   const markSafetyPass = useProjectStore((s) => s.markSafetyPass);
   const theoryQuestions = useTheoryStore((s) => s.questions);
+  const safetyQuestions = useSafetyStore((s) => s.questions);
   const userId = useAuthStore((s) => s.userId);
   const pushToast = useUIStore((s) => s.pushToast);
 
@@ -65,13 +67,14 @@ export default function SafetyExam() {
     if (step !== 'quiz' || questions.length > 0 || !examCategory) return;
     let pool = theoryQuestions.filter((q) => q.safetyCategory === examCategory);
     if (pool.length < 10) {
-      const built = buildSafetyQuestions().filter(
+      // 教师维护的安全题库（含内置题与教师上传/修改的题目）
+      const maintained = safetyQuestions.filter(
         (q) => q.safetyCategory === examCategory
       );
-      pool = [...pool, ...built];
+      pool = [...pool, ...maintained];
     }
     setQuestions(sampleExamQuestions(examCategory, pool, 10));
-  }, [step, questions.length, examCategory, theoryQuestions]);
+  }, [step, questions.length, examCategory, theoryQuestions, safetyQuestions]);
 
   if (!examCategory || !notice) {
     return (
