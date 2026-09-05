@@ -24,6 +24,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
+import { useGroupStore } from '@/store/groupStore';
 import { classesApi } from '@/lib/apiService';
 import type { SchoolClass, User } from '@/data/mockData';
 import { cn } from '@/lib/utils';
@@ -32,17 +33,18 @@ const MAX_STUDENTS = 30;
 
 export default function StudentRoster() {
   const pushToast = useUIStore((s) => s.pushToast);
+  const getGroupById = useGroupStore((s) => s.getGroupById);
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState('');
-  const [students, setStudents] = useState<User[]>([]);
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, User[]>>({});
   const [loading, setLoading] = useState(true);
 
   // 班级重命名
   const [editingClass, setEditingClass] = useState<{ id: string; name: string } | null>(null);
 
-  // 上传学生
+  // 上传学生（针对某个班级）
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadClassId, setUploadClassId] = useState('');
   const [uploadText, setUploadText] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -54,39 +56,32 @@ export default function StudentRoster() {
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
 
-  const loadClasses = useCallback(async () => {
+  const loadRoster = useCallback(async () => {
+    setLoading(true);
     try {
-      const list = await classesApi.list();
-      setClasses(list);
-      if (list.length > 0 && !selectedClassId) {
-        setSelectedClassId(list[0].id);
-      }
+      const classList = await classesApi.list();
+      setClasses(classList);
+      // 并行拉取每个班级的学生名单，按班级分批呈现
+      const entries = await Promise.all(
+        classList.map(async (c) => {
+          try {
+            return [c.id, await classesApi.listStudents(c.id)] as const;
+          } catch {
+            return [c.id, [] as User[]] as const;
+          }
+        })
+      );
+      setStudentsByClass(Object.fromEntries(entries));
     } catch {
       pushToast('班级列表加载失败', 'error');
-    }
-  }, [pushToast, selectedClassId]);
-
-  const loadStudents = useCallback(async () => {
-    if (!selectedClassId) return;
-    setLoading(true);
-    setSelectedIds(new Set());
-    try {
-      const list = await classesApi.listStudents(selectedClassId);
-      setStudents(list);
-    } catch {
-      pushToast('学生名单加载失败', 'error');
     } finally {
       setLoading(false);
     }
-  }, [selectedClassId, pushToast]);
+  }, [pushToast]);
 
   useEffect(() => {
-    loadClasses();
-  }, [loadClasses]);
-
-  useEffect(() => {
-    if (selectedClassId) loadStudents();
-  }, [selectedClassId, loadStudents]);
+    loadRoster();
+  }, [loadRoster]);
 
   // ---- 操作 ----
   const handleRenameClass = async () => {
@@ -104,7 +99,7 @@ export default function StudentRoster() {
   };
 
   const handleUpload = async () => {
-    if (!selectedClassId || !uploadText.trim()) return;
+    if (!uploadClassId || !uploadText.trim()) return;
     // 解析输入：每行一个学生名，或 JSON 格式
     let items: { name: string; username?: string; password?: string }[] = [];
     const text = uploadText.trim();
@@ -134,8 +129,11 @@ export default function StudentRoster() {
 
     setUploading(true);
     try {
-      const created = await classesApi.uploadStudents(selectedClassId, items);
-      setStudents((prev) => [...prev, ...created]);
+      const created = await classesApi.uploadStudents(uploadClassId, items);
+      setStudentsByClass((prev) => ({
+        ...prev,
+        [uploadClassId]: [...(prev[uploadClassId] || []), ...created],
+      }));
       setUploadText('');
       setShowUpload(false);
       pushToast(`成功导入 ${created.length} 名学生`, 'success');
@@ -150,7 +148,14 @@ export default function StudentRoster() {
     if (!deleteStudentId) return;
     try {
       await classesApi.deleteStudent(deleteStudentId.id);
-      setStudents((prev) => prev.filter((u) => u.id !== deleteStudentId.id));
+      setStudentsByClass((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).map(([classId, list]) => [
+            classId,
+            list.filter((u) => u.id !== deleteStudentId.id),
+          ])
+        )
+      );
       setDeleteStudentId(null);
       pushToast(`已删除学生「${deleteStudentId.name}」`, 'success');
     } catch (err: any) {
@@ -167,12 +172,14 @@ export default function StudentRoster() {
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === students.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(students.map((s) => s.id)));
-    }
+  const toggleSelectAllInClass = (classId: string) => {
+    const ids = (studentsByClass[classId] || []).map((s) => s.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
   };
 
   const handleBatchDelete = async () => {
@@ -188,7 +195,14 @@ export default function StudentRoster() {
         fail++;
       }
     }
-    setStudents((prev) => prev.filter((u) => !selectedIds.has(u.id)));
+    setStudentsByClass((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([classId, list]) => [
+          classId,
+          list.filter((u) => !ids.includes(u.id)),
+        ])
+      )
+    );
     setSelectedIds(new Set());
     setShowBatchDelete(false);
     setBatchDeleting(false);
@@ -199,8 +213,7 @@ export default function StudentRoster() {
     }
   };
 
-  const selectedClass = classes.find((c) => c.id === selectedClassId);
-  const remainingSlots = MAX_STUDENTS - students.length;
+  const uploadClassName = classes.find((c) => c.id === uploadClassId)?.name || '';
 
   return (
     <div className="w-full space-y-6">
@@ -212,142 +225,160 @@ export default function StudentRoster() {
         <div>
           <span className="chip-mission !py-0.5 !px-2 !text-[10px]">ROSTER</span>
           <h1 className="mt-1 text-[24px] font-extrabold text-ink-900 tracking-tight">学生名单</h1>
-          <p className="text-[13px] text-ink-500 font-medium">按班级查看 · 批量导入 · 每班上限 {MAX_STUDENTS} 人</p>
+          <p className="text-[13px] text-ink-500 font-medium">各班级分批呈现 · 批量导入 · 每班上限 {MAX_STUDENTS} 人</p>
         </div>
       </div>
 
-      {/* 班级选择 + 操作栏 */}
-      <div className="glass-card p-5 rounded-[22px] flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <School size={18} className="text-mission-500 shrink-0" />
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
-            className="input-field cursor-pointer"
-          >
-            {classes.length === 0 ? (
-              <option value="">暂无班级</option>
-            ) : (
-              classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))
-            )}
-          </select>
-        </div>
-        {selectedClass && (
-          <>
-            <button
-              onClick={() => setEditingClass({ id: selectedClass.id, name: selectedClass.name })}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass-card glass-card-hover text-[13px] font-semibold text-ink-600 hover:text-mission-600"
-            >
-              <Pencil size={15} /> 改班级名
-            </button>
-            <button
-              onClick={() => setShowUpload(true)}
-              disabled={remainingSlots <= 0}
-              className="btn-mission disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2 !py-2.5"
-            >
-              <Upload size={16} /> 导入学生
-            </button>
-            {selectedIds.size > 0 && (
-              <button
-                onClick={() => setShowBatchDelete(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-br from-danger-400 to-danger-600 text-white text-[13px] font-semibold hover:shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_12px_40px_rgba(239,68,68,0.22)] transition-all"
-              >
-                <Trash2 size={15} /> 批量删除 ({selectedIds.size})
-              </button>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* 统计 */}
-      {selectedClass && !loading && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="chip-mission !py-1 !px-3 inline-flex items-center gap-1.5">
-            <Users size={13} /> {students.length} / {MAX_STUDENTS} 人
+      {/* 批量删除操作条（跨班级全局选择） */}
+      {selectedIds.size > 0 && (
+        <div className="glass-card p-4 rounded-[22px] flex items-center justify-between">
+          <span className="text-[13px] font-semibold text-ink-600">
+            已选择 {selectedIds.size} 名学生（可跨班级）
           </span>
-          {remainingSlots > 0 ? (
-            <span className="chip-nova !py-1 !px-3">还可导入 {remainingSlots} 人</span>
-          ) : (
-            <span className="chip-alert !py-1 !px-3 inline-flex items-center gap-1.5">
-              <AlertTriangle size={13} /> 已满员
-            </span>
-          )}
+          <button
+            onClick={() => setShowBatchDelete(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-br from-danger-400 to-danger-600 text-white text-[13px] font-semibold hover:shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_12px_40px_rgba(239,68,68,0.22)] transition-all"
+          >
+            <Trash2 size={15} /> 批量删除 ({selectedIds.size})
+          </button>
         </div>
       )}
 
-      {/* 学生名单表格 */}
+      {/* 各班级名单分批呈现 */}
       {loading ? (
         <div className="glass-card p-10 rounded-[22px] text-center text-ink-400 flex items-center justify-center gap-2">
           <Loader2 size={20} className="animate-spin" /> 加载中…
         </div>
-      ) : students.length === 0 ? (
+      ) : classes.length === 0 ? (
         <div className="glass-card p-10 rounded-[22px] text-center text-ink-400">
-          该班级暂无学生，点击「导入学生」添加
+          暂无班级
         </div>
       ) : (
-        <div className="glass-card rounded-[22px] overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-ink-100/60">
-                <th className="px-5 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === students.length && students.length > 0}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded accent-mission-500 cursor-pointer"
-                  />
-                </th>
-                <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">序号</th>
-                <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">姓名</th>
-                <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">用户名</th>
-                <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">小组</th>
-                <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">角色</th>
-                <th className="text-right text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s, i) => (
-                <tr key={s.id} className="border-b border-ink-50/40 hover:bg-mission-50/30 transition group">
-                  <td className="px-5 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(s.id)}
-                      onChange={() => toggleSelect(s.id)}
-                      className="w-4 h-4 rounded accent-mission-500 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-5 py-3 text-[13px] text-ink-400 font-mono">{i + 1}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <img src={s.avatar} alt={s.name} className="w-7 h-7 rounded-lg object-cover bg-mission-100" />
-                      <span className="text-[13px] font-semibold text-ink-800">{s.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-[12px] text-ink-500 font-mono">{s.id}</td>
-                  <td className="px-5 py-3 text-[12px] text-ink-500">{s.groupId || <span className="text-ink-300">未分组</span>}</td>
-                  <td className="px-5 py-3">
-                    {s.role === 'leader' ? (
-                      <span className="chip-nova !py-0 !px-1.5 !text-[10px]">组长</span>
-                    ) : (
-                      <span className="text-[12px] text-ink-400">组员</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <button
-                      onClick={() => setDeleteStudentId({ id: s.id, name: s.name })}
-                      className="w-7 h-7 rounded-lg hover:bg-danger-50 flex items-center justify-center text-ink-400 hover:text-danger-600 transition opacity-0 group-hover:opacity-100 inline-flex"
-                      title="删除"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        classes.map((c) => {
+          const list = studentsByClass[c.id] || [];
+          const remaining = MAX_STUDENTS - list.length;
+          const allSelected = list.length > 0 && list.every((s) => selectedIds.has(s.id));
+          const selectedInClass = list.filter((s) => selectedIds.has(s.id)).length;
+          return (
+            <div key={c.id} className="glass-card rounded-[22px] overflow-hidden">
+              {/* 班级节头 */}
+              <div className="px-5 py-4 border-b border-ink-100/60 flex flex-wrap items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shrink-0">
+                  <School size={16} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-extrabold text-ink-900 truncate">{c.name}</h3>
+                  <p className="text-[11px] text-ink-400 font-mono">{c.id}</p>
+                </div>
+                <span className="chip-mission !py-1 !px-2.5 inline-flex items-center gap-1.5">
+                  <Users size={12} /> {list.length} / {MAX_STUDENTS} 人
+                </span>
+                {remaining > 0 ? (
+                  <span className="chip-nova !py-1 !px-2.5">余 {remaining} 位</span>
+                ) : (
+                  <span className="chip-alert !py-1 !px-2.5 inline-flex items-center gap-1.5">
+                    <AlertTriangle size={12} /> 已满员
+                  </span>
+                )}
+                {selectedInClass > 0 && (
+                  <span className="chip-nova !py-1 !px-2.5">已选 {selectedInClass} 人</span>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={() => setEditingClass({ id: c.id, name: c.name })}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card glass-card-hover text-[12px] font-semibold text-ink-600 hover:text-mission-600"
+                  >
+                    <Pencil size={13} /> 改班级名
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUploadClassId(c.id);
+                      setUploadText('');
+                      setShowUpload(true);
+                    }}
+                    disabled={remaining <= 0}
+                    className="btn-ghost-mission !py-2 !px-3 inline-flex items-center gap-1.5 text-[12px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Upload size={13} /> 导入学生
+                  </button>
+                </div>
+              </div>
+
+              {/* 班级学生表格 */}
+              {list.length === 0 ? (
+                <div className="p-8 text-center text-[13px] text-ink-400">
+                  该班级暂无学生，点击「导入学生」添加
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-ink-100/60">
+                      <th className="px-5 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={() => toggleSelectAllInClass(c.id)}
+                          className="w-4 h-4 rounded accent-mission-500 cursor-pointer"
+                        />
+                      </th>
+                      <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">序号</th>
+                      <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">姓名</th>
+                      <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">用户名</th>
+                      <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">小组</th>
+                      <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">角色</th>
+                      <th className="text-right text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((s, i) => (
+                      <tr key={s.id} className="border-b border-ink-50/40 hover:bg-mission-50/30 transition group">
+                        <td className="px-5 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(s.id)}
+                            onChange={() => toggleSelect(s.id)}
+                            className="w-4 h-4 rounded accent-mission-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-5 py-3 text-[13px] text-ink-400 font-mono">{i + 1}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <img src={s.avatar} alt={s.name} className="w-7 h-7 rounded-lg object-cover bg-mission-100" />
+                            <span className="text-[13px] font-semibold text-ink-800">{s.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-[12px] text-ink-500 font-mono">{s.id}</td>
+                        <td className="px-5 py-3 text-[12px] text-ink-500">
+                          {s.groupId ? (
+                            getGroupById(s.groupId)?.name || s.groupId
+                          ) : (
+                            <span className="text-ink-300">未分组</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3">
+                          {s.role === 'leader' ? (
+                            <span className="chip-nova !py-0 !px-1.5 !text-[10px]">组长</span>
+                          ) : (
+                            <span className="text-[12px] text-ink-400">组员</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <button
+                            onClick={() => setDeleteStudentId({ id: s.id, name: s.name })}
+                            className="w-7 h-7 rounded-lg hover:bg-danger-50 flex items-center justify-center text-ink-400 hover:text-danger-600 transition opacity-0 group-hover:opacity-100 inline-flex"
+                            title="删除"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        })
       )}
 
       {/* ===== Modals ===== */}
@@ -370,12 +401,13 @@ export default function StudentRoster() {
       </Modal>
 
       {/* 导入学生 */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)} title="批量导入学生" icon={Upload}>
+      <Modal open={showUpload} onClose={() => setShowUpload(false)} title={`批量导入学生 · ${uploadClassName}`} icon={Upload}>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="field-label">学生名单</label>
             <span className="text-[11px] text-ink-400">
-              当前 {students.length} 人 · 还可导入 {remainingSlots} 人
+              当前 {(studentsByClass[uploadClassId] || []).length} 人 · 还可导入{' '}
+              {MAX_STUDENTS - (studentsByClass[uploadClassId] || []).length} 人
             </span>
           </div>
           <textarea
