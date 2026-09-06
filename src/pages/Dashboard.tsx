@@ -32,6 +32,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Megaphone,
   Eye,
   AlertTriangle,
   BookOpen,
@@ -234,7 +235,7 @@ export default function Dashboard() {
     [groups, classId]
   );
   const { quizSessions, challenges } = useTheoryStore();
-  const { projects, showcaseItems, createProject, updateProject, deleteProject } = useProjectStore();
+  const { projects, showcaseItems, createProject, updateProject, deleteProject, createRecruitment } = useProjectStore();
   const { coinTxs } = useCoinStore();
 
   // 学生自助加入小组的本地状态
@@ -364,6 +365,41 @@ export default function Dashboard() {
     } catch (e: any) {
       pushToast(e?.message || '删除失败', 'error');
     } finally { setDeleteTarget(null); }
+  };
+
+  const [recOpen, setRecOpen] = useState(false);
+  const [recProject, setRecProject] = useState<Project | null>(null);
+  const [recForm, setRecForm] = useState({ title: '', description: '', skills: '', reward: 50, daysLeft: 7 });
+  const [recSaving, setRecSaving] = useState(false);
+  const canPublish = (gid: string) =>
+    isStaff || (groupId === gid && users.find((u) => u.id === userId)?.role === 'leader');
+
+  const openRecruit = (p: Project) => {
+    setRecProject(p);
+    setRecForm({ title: '', description: '', skills: '', reward: 50, daysLeft: 7 });
+    setRecOpen(true);
+  };
+
+  const submitRecruit = async () => {
+    if (!recProject) return;
+    if (!recForm.title.trim()) { pushToast('请填写招募标题', 'warning'); return; }
+    if (!recForm.description.trim()) { pushToast('请填写任务描述', 'warning'); return; }
+    if (!recForm.skills.trim()) { pushToast('请填写技能要求', 'warning'); return; }
+    setRecSaving(true);
+    try {
+      createRecruitment({
+        projectId: recProject.id,
+        title: recForm.title.trim(),
+        description: recForm.description.trim(),
+        skills: recForm.skills.split(/[,，\s]+/).filter(Boolean),
+        reward: Number(recForm.reward) || 0,
+        deadline: new Date(Date.now() + (Number(recForm.daysLeft) || 7) * 86400000),
+      });
+      pushToast('招募已发布，学生可在招募市场投标', 'success');
+      setRecOpen(false);
+    } catch (e: any) {
+      pushToast(e?.message || '发布失败', 'error');
+    } finally { setRecSaving(false); }
   };
 
   const learningPathProgress = useMemo(() => {
@@ -737,6 +773,15 @@ export default function Dashboard() {
                           >
                             <Trash2 size={12} />
                           </button>
+                          {canPublish(p.ownerGroupId) && (
+                            <button
+                              title="发布招募"
+                              className="w-6 h-6 rounded-lg bg-white/80 border border-ink-100 flex items-center justify-center text-ink-500 hover:text-energy-600 transition"
+                              onClick={(e) => { e.stopPropagation(); openRecruit(p); }}
+                            >
+                              <Megaphone size={12} />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1284,6 +1329,51 @@ export default function Dashboard() {
             <div className="flex gap-2">
               <button className="btn-ghost flex-1" onClick={() => setDeleteTarget(null)}>取消</button>
               <button className="flex-1 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-br from-danger-400 to-danger-600" onClick={confirmDelete}>确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 发布招募 */}
+      {recOpen && recProject && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4" onClick={() => setRecOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-ink-800 flex items-center gap-2">
+                <Megaphone size={18} className="text-energy-500" />
+                发布招募 · {recProject.title}
+              </h3>
+              <button onClick={() => setRecOpen(false)} className="p-1.5 rounded-lg hover:bg-ink-100 transition-colors"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="label">招募标题</label>
+                <input className="input" value={recForm.title} onChange={(e) => setRecForm({ ...recForm, title: e.target.value })} placeholder="例如：数据分析助手" />
+              </div>
+              <div>
+                <label className="label">任务描述</label>
+                <textarea className="input min-h-[80px] resize-y" value={recForm.description} onChange={(e) => setRecForm({ ...recForm, description: e.target.value })} placeholder="需要完成的工作与交付物..." />
+              </div>
+              <div>
+                <label className="label">技能要求（用逗号或空格分隔）</label>
+                <input className="input" value={recForm.skills} onChange={(e) => setRecForm({ ...recForm, skills: e.target.value })} placeholder="Python, 数据分析, Excel" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">酬劳（能量币）</label>
+                  <input type="number" min={0} className="input" value={recForm.reward} onChange={(e) => setRecForm({ ...recForm, reward: Number(e.target.value) || 0 })} />
+                </div>
+                <div>
+                  <label className="label">截止天数</label>
+                  <input type="number" min={1} className="input" value={recForm.daysLeft} onChange={(e) => setRecForm({ ...recForm, daysLeft: Math.max(1, Number(e.target.value) || 1) })} />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button className="btn-ghost flex-1" onClick={() => setRecOpen(false)}>取消</button>
+              <button className="btn-energy flex-1" onClick={submitRecruit} disabled={recSaving}>
+                {recSaving ? '发布中…' : '发布招募'}
+              </button>
             </div>
           </div>
         </div>
