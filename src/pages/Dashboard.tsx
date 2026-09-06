@@ -156,49 +156,6 @@ const LEARNING_PATH_CONFIG = [
   { id: 'showcase', name: '成果展示', badge: false },
 ];
 
-const LAB_NEWS = [
-  { time: '09:25', group: '牛顿组', event: '完成磁悬浮实验', coin: 180, variant: 'growth' },
-  { time: '09:40', group: '爱因斯坦组', event: '发布招募：电路专家', coin: 120, variant: 'mission' },
-  { time: '10:10', group: '法拉第组', event: '挑战「电磁学」成功', coin: 60, variant: 'nova' },
-  { time: '10:35', group: '特斯拉组', event: '提交安全认证', coin: 0, variant: 'alert' },
-  { time: '11:02', group: '伽利略组', event: '项目文档上传', coin: 40, variant: 'growth' },
-];
-
-const RECRUITS = [
-  { title: '数据分析专家', project: '霍尔效应测量', role: '算法建模', reward: 120, daysLeft: 2 },
-  { title: '硬件搭建助手', project: '驻波共振演示', role: '仪器操作', reward: 90, daysLeft: 4 },
-  { title: '3D建模设计师', project: '光纤通信模拟', role: 'CAD绘图', reward: 150, daysLeft: 1 },
-];
-
-const TEAMS = [
-  { rank: 1, name: '爱因斯坦脑洞组', level: 'LV7', coins: 4820, projects: 8, avatarBg: 'from-gold-400 to-amber-500' },
-  { rank: 2, name: '牛顿先锋队', level: 'LV6', coins: 4210, projects: 7, avatarBg: 'from-slate-300 to-slate-500' },
-  { rank: 3, name: '特斯拉电流团', level: 'LV6', coins: 3980, projects: 6, avatarBg: 'from-orange-400 to-amber-600' },
-  { rank: 4, name: '麦克斯韦闪电队', level: 'LV5', coins: 3420, projects: 5 },
-  { rank: 5, name: '伽利略观测站', level: 'LV5', coins: 3180, projects: 5 },
-  { rank: 6, name: '薛定谔猫队', level: 'LV4', coins: 2860, projects: 4 },
-];
-
-const ACHIEVEMENT_SEEDS = [101, 102, 103, 104, 105, 106];
-const ACHIEVEMENT_TITLES = [
-  '自制电动机成品',
-  '弹簧振子实验台',
-  '云室粒子径迹',
-  '太阳能测试阵列',
-  '驻波共振装置',
-  '霍尔效应电路板',
-];
-
-const CLASS_STATS = [
-  { label: '总人数', value: 30, suffix: '人', tint: 'mission' },
-  { label: '总小组', value: 6, suffix: '组', tint: 'nova' },
-  { label: '完成项目', value: 8, suffix: '个', tint: 'growth' },
-  { label: '进行中', value: 4, suffix: '个', tint: 'mission' },
-  { label: '失败项目', value: 1, suffix: '个', tint: 'danger' },
-  { label: 'AI学习完成率', value: 87, suffix: '%', tint: 'energy' },
-  { label: '安全通过率', value: 90, suffix: '%', tint: 'growth' },
-  { label: '能量流通', value: 22400, suffix: '⚡', tint: 'alert' },
-];
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -235,7 +192,7 @@ export default function Dashboard() {
     [groups, classId]
   );
   const { quizSessions, challenges } = useTheoryStore();
-  const { projects, showcaseItems, createProject, updateProject, deleteProject, createRecruitment } = useProjectStore();
+  const { projects, showcaseItems, recruitments, createProject, updateProject, deleteProject, createRecruitment } = useProjectStore();
   const { coinTxs } = useCoinStore();
 
   // 学生自助加入小组的本地状态
@@ -445,26 +402,108 @@ export default function Dashboard() {
     return LEARNING_PATH_CONFIG.filter((step) => learningPathProgress[step.id]?.done).length;
   }, [learningPathProgress]);
 
-  const coinTotal = useCountUp(3650, 1800);
-  const coinToday = useCountUp(248, 1600);
-  const coinWeek = useCountUp(1260, 2000);
-  const upgradeNeed = useCountUp(1280, 1800);
-  const newsCoin1 = useCountUp(180);
-  const newsCoin2 = useCountUp(120);
-  const newsCoin3 = useCountUp(60);
-  const newsCoin5 = useCountUp(40);
+  // --- 真实数据派生（替换 mock）---
+  const DAY = 86400000;
+  const myCoins = myGroup?.totalCoins || 0;
+  const levelOf = (coins: number) => Math.max(1, Math.min(12, Math.floor(Math.log10(Math.max(1, coins)) * 2)));
+  const sumDelta = (since: number) =>
+    coinTxs
+      .filter((tx) => tx.groupId === groupId && (tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt)).getTime() >= since)
+      .reduce((s, tx) => s + tx.delta, 0);
+  const coinTodayVal = sumDelta(Date.now() - DAY);
+  const coinWeekVal = sumDelta(Date.now() - 7 * DAY);
+  const levelThreshold = (lv: number) => Math.pow(10, lv / 2) | 0;
+  const upgradeNeedVal = Math.max(0, levelThreshold(levelOf(myCoins) + 1) - myCoins);
+  const todayProgress = Math.round((completedSteps / Math.max(1, LEARNING_PATH_CONFIG.length)) * 100);
 
-  const maxTeamCoin = useMemo(() => Math.max(...TEAMS.slice(3).map((t) => t.coins)), []);
-  const recruit0 = useCountUp(RECRUITS[0].reward);
-  const recruit1 = useCountUp(RECRUITS[1].reward);
-  const recruit2 = useCountUp(RECRUITS[2].reward);
-  const teamCoin0 = useCountUp(TEAMS[0].coins);
-  const teamCoin1 = useCountUp(TEAMS[1].coins);
-  const teamCoin2 = useCountUp(TEAMS[2].coins);
-  const teamCoin3 = useCountUp(TEAMS[3].coins);
-  const teamCoin4 = useCountUp(TEAMS[4].coins);
-  const teamCoin5 = useCountUp(TEAMS[5].coins);
-  const statValues = CLASS_STATS.map((s) => useCountUp(s.value, 1400 + CLASS_STATS.indexOf(s) * 120));
+  const teamRanking = useMemo(
+    () =>
+      [...groups]
+        .sort((a, b) => b.totalCoins - a.totalCoins)
+        .slice(0, 6)
+        .map((g) => ({
+          rank: 0,
+          name: g.name,
+          level: `LV${levelOf(g.totalCoins)}`,
+          coins: g.totalCoins,
+          projects: projects.filter((p) => p.ownerGroupId === g.id).length,
+        })),
+    [groups, projects]
+  );
+  const maxTeamCoin = Math.max(1, ...teamRanking.map((t) => t.coins));
+
+  const classGroups = classId ? groups.filter((g) => g.classId === classId) : groups;
+  const classStudents = classId ? users.filter((u) => u.classId === classId) : users;
+  const classGroupIds = new Set(classGroups.map((g) => g.id));
+  const classProjects = projects.filter((p) => classGroupIds.has(p.ownerGroupId));
+  const classStats = [
+    { label: '总人数', value: classStudents.length, suffix: '人', tint: 'mission' },
+    { label: '总小组', value: classGroups.length, suffix: '组', tint: 'nova' },
+    { label: '完成项目', value: classProjects.filter((p) => p.status === 'done').length, suffix: '个', tint: 'growth' },
+    { label: '进行中', value: classProjects.filter((p) => ['progress', 'review', 'planning'].includes(p.status)).length, suffix: '个', tint: 'mission' },
+    { label: '失败项目', value: classProjects.filter((p) => p.status === 'failed').length, suffix: '个', tint: 'danger' },
+    { label: 'AI学习完成率', value: classStudents.length ? Math.round((classStudents.filter((u) => u.personalCoins > 0).length / classStudents.length) * 100) : 0, suffix: '%', tint: 'energy' },
+    { label: '安全通过率', value: classProjects.length ? Math.round((classProjects.filter((p) => Object.keys(p.safetyPassed || {}).length > 0).length / classProjects.length) * 100) : 0, suffix: '%', tint: 'growth' },
+    { label: '能量流通', value: classGroups.reduce((s, g) => s + g.totalCoins, 0), suffix: '⚡', tint: 'alert' },
+  ];
+
+  const labNews = useMemo(
+    () =>
+      [...coinTxs]
+        .sort((a, b) =>
+          (a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt)).getTime() -
+          (b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt)).getTime()
+        )
+        .slice(-5)
+        .reverse()
+        .map((tx) => {
+          const t = tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt);
+          return {
+            time: `${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`,
+            group: groups.find((g) => g.id === tx.groupId)?.name || '未知小组',
+            event: tx.note || '能量币变动',
+            coin: tx.delta,
+            variant: tx.delta >= 0 ? 'growth' : 'danger',
+          };
+        }),
+    [coinTxs, groups]
+  );
+
+  const recruitList = useMemo(
+    () =>
+      recruitments
+        .filter((r) => r.status === 'open')
+        .slice(0, 3)
+        .map((r) => ({
+          title: r.title,
+          project: projects.find((p) => p.id === r.projectId)?.title || '',
+          role: r.skills?.[0] || '不限',
+          reward: r.reward,
+          daysLeft: Math.max(0, Math.ceil((new Date(r.deadline instanceof Date ? r.deadline : r.deadline).getTime() - Date.now()) / 86400000)),
+        })),
+    [recruitments, projects]
+  );
+
+  const achievements = useMemo(() => showcaseItems.slice(0, 6).map((s) => ({ title: s.title || '成果展示' })), [showcaseItems]);
+
+  const coinTotal = useCountUp(myCoins);
+  const coinToday = useCountUp(coinTodayVal);
+  const coinWeek = useCountUp(coinWeekVal);
+  const upgradeNeed = useCountUp(upgradeNeedVal);
+  const newsCoin1 = useCountUp(labNews[0]?.coin || 0);
+  const newsCoin2 = useCountUp(labNews[1]?.coin || 0);
+  const newsCoin3 = useCountUp(labNews[2]?.coin || 0);
+  const newsCoin5 = useCountUp(labNews[4]?.coin || 0);
+  const recruit0 = useCountUp(recruitList[0]?.reward || 0);
+  const recruit1 = useCountUp(recruitList[1]?.reward || 0);
+  const recruit2 = useCountUp(recruitList[2]?.reward || 0);
+  const teamCoin0 = useCountUp(teamRanking[0]?.coins || 0);
+  const teamCoin1 = useCountUp(teamRanking[1]?.coins || 0);
+  const teamCoin2 = useCountUp(teamRanking[2]?.coins || 0);
+  const teamCoin3 = useCountUp(teamRanking[3]?.coins || 0);
+  const teamCoin4 = useCountUp(teamRanking[4]?.coins || 0);
+  const teamCoin5 = useCountUp(teamRanking[5]?.coins || 0);
+  const statValues = classStats.map((s) => useCountUp(s.value, 1400 + classStats.indexOf(s) * 120));
 
   return (
     <div className="w-full space-y-6">
@@ -546,8 +585,8 @@ export default function Dashboard() {
                 )}
               </h1>
               <p className="mt-3 text-[15px] text-ink-500 font-medium">
-                今日任务进度 <span className="text-mission-600 font-bold">82%</span>，
-                距离晋升 <span className="chip-nova !py-0.5 !px-2 mx-0.5">LV9</span> 还需
+                今日任务进度 <span className="text-mission-600 font-bold">{todayProgress}%</span>，
+                距离晋升 <span className="chip-nova !py-0.5 !px-2 mx-0.5">LV{levelOf(myCoins)}</span> 还需
                 <span className="text-gradient-energy font-bold ml-1"> {upgradeNeed}⚡</span>
               </p>
             </div>
@@ -573,15 +612,15 @@ export default function Dashboard() {
         <div className="col-span-12 lg:col-span-4 rounded-[28px] p-6 bg-gradient-to-br from-energy-50/80 via-white/90 to-alert-50/60 border border-energy-100/50">
           <div className="flex items-center justify-between mb-1">
             <span className="chip-ink !px-2.5 !py-1">Current Rank</span>
-            <span className="chip-nova !py-1 !px-2.5">LV8</span>
+            <span className="chip-nova !py-1 !px-2.5">LV{levelOf(myCoins)}</span>
           </div>
           <h3 className="mt-2 text-[18px] font-extrabold text-ink-800">今日任务进度</h3>
 
           <div className="flex items-center justify-center my-5">
             <div className="relative">
-              <ProgressRing size={160} stroke={10} progress={82} />
+              <ProgressRing size={160} stroke={10} progress={todayProgress} />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-[44px] font-black text-gradient-mission leading-none tabular-nums">82%</div>
+                <div className="text-[44px] font-black text-gradient-mission leading-none tabular-nums">{todayProgress}%</div>
                 <div className="text-[11px] text-ink-500 font-semibold mt-1.5 tracking-wide">TODAY PROGRESS</div>
               </div>
             </div>
@@ -703,7 +742,7 @@ export default function Dashboard() {
               </div>
               <div className="p-3.5 rounded-xl bg-gradient-to-br from-mission-50/70 to-nova-50/60 border border-mission-100/60">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="chip-mission !py-0.5 !px-2 !text-[10px]">LV8 Researcher</span>
+                  <span className="chip-mission !py-0.5 !px-2 !text-[10px]">LV{levelOf(myCoins)} Researcher</span>
                   <span className="text-[11px] font-bold text-ink-500">距升级 {upgradeNeed}⚡</span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-ink-100 overflow-hidden">
@@ -832,7 +871,7 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-3 pr-1">
-                {LAB_NEWS.map((n, i) => (
+                {labNews.map((n, i) => (
                   <div key={i} className="flex items-start gap-3 group">
                     <div className="flex flex-col items-center shrink-0 pt-1">
                       <div className="text-[10px] font-mono font-black text-ink-500 bg-ink-100 rounded-md px-1.5 py-0.5">{n.time}</div>
@@ -931,7 +970,7 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-3 gap-4">
-              {RECRUITS.map((r, i) => (
+              {recruitList.map((r, i) => (
                 <div key={r.title} className="rounded-2xl bg-gradient-to-br from-white/95 to-ink-50/80 p-4 border border-ink-100/50 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-30 blur-2xl pointer-events-none"
                     style={{ background: i === 0 ? '#4F7CFF' : i === 1 ? '#22C55E' : '#FF8A34' }} />
@@ -987,8 +1026,8 @@ export default function Dashboard() {
                   <Crown size={18} className="text-slate-600" />
                   <Star size={8} className="absolute -top-1.5 -right-1 text-slate-500 fill-slate-400" />
                 </div>
-                <div className="text-[12px] font-bold text-ink-800 text-center leading-tight truncate w-full px-1">{TEAMS[1].name}</div>
-                <div className="text-[10px] text-ink-500 mt-0.5 font-mono">{TEAMS[1].level} · {TEAMS[1].projects}项目</div>
+                <div className="text-[12px] font-bold text-ink-800 text-center leading-tight truncate w-full px-1">{teamRanking[1].name}</div>
+                <div className="text-[10px] text-ink-500 mt-0.5 font-mono">{teamRanking[1].level} · {teamRanking[1].projects}项目</div>
                 <div className="mt-2 flex items-center gap-0.5 text-gradient-energy font-black text-[16px] tabular-nums">
                   <Zap size={12} />{teamCoin1}
                 </div>
@@ -1004,8 +1043,8 @@ export default function Dashboard() {
                   <Star size={10} className="absolute -top-2 -right-2 text-alert-500 fill-alert-400 animate-pulse" />
                   <Star size={7} className="absolute -top-1 -left-2 text-alert-400 fill-alert-300" />
                 </div>
-                <div className="text-[13px] font-black text-ink-900 text-center leading-tight truncate w-full px-1">{TEAMS[0].name}</div>
-                <div className="text-[10.5px] text-ink-500 mt-0.5 font-mono font-bold">{TEAMS[0].level} · {TEAMS[0].projects}项目</div>
+                <div className="text-[13px] font-black text-ink-900 text-center leading-tight truncate w-full px-1">{teamRanking[0].name}</div>
+                <div className="text-[10.5px] text-ink-500 mt-0.5 font-mono font-bold">{teamRanking[0].level} · {teamRanking[0].projects}项目</div>
                 <div className="mt-2 flex items-center gap-0.5 text-gradient-energy font-black text-[20px] tabular-nums">
                   <Zap size={15} />{teamCoin0}
                 </div>
@@ -1019,8 +1058,8 @@ export default function Dashboard() {
                 <div className="w-12 h-12 rounded-2xl podium-bronze flex items-center justify-center mb-2 relative">
                   <Crown size={18} className="text-orange-700" />
                 </div>
-                <div className="text-[12px] font-bold text-ink-800 text-center leading-tight truncate w-full px-1">{TEAMS[2].name}</div>
-                <div className="text-[10px] text-ink-500 mt-0.5 font-mono">{TEAMS[2].level} · {TEAMS[2].projects}项目</div>
+                <div className="text-[12px] font-bold text-ink-800 text-center leading-tight truncate w-full px-1">{teamRanking[2].name}</div>
+                <div className="text-[10px] text-ink-500 mt-0.5 font-mono">{teamRanking[2].level} · {teamRanking[2].projects}项目</div>
                 <div className="mt-2 flex items-center gap-0.5 text-gradient-energy font-black text-[16px] tabular-nums">
                   <Zap size={12} />{teamCoin2}
                 </div>
@@ -1032,7 +1071,7 @@ export default function Dashboard() {
 
             {/* 4-6 list */}
             <div className="space-y-2.5">
-              {TEAMS.slice(3).map((t, i) => {
+              {teamRanking.slice(3).map((t, i) => {
                 const coins = [teamCoin3, teamCoin4, teamCoin5][i];
                 return (
                   <div key={t.rank} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-mission-50/40 transition-colors">
@@ -1087,21 +1126,21 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              {ACHIEVEMENT_SEEDS.map((seed, i) => (
+              {achievements.map((a, i) => (
                 <div
-                  key={seed}
+                  key={i}
                   className={`group relative rounded-2xl overflow-hidden shadow-sm ${i === 0 || i === 4 ? 'row-span-2' : ''}`}
                   style={{ height: i === 0 || i === 4 ? 220 : 106 }}
                 >
                   <img
-                    src={`https://picsum.photos/seed/${seed}/400/${i === 0 || i === 4 ? 600 : 300}`}
-                    alt={ACHIEVEMENT_TITLES[i]}
+                    src={`https://picsum.photos/seed/${i}/400/${i === 0 || i === 4 ? 600 : 300}`}
+                    alt={a.title}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-ink-900/85 via-ink-900/20 to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
                   <div className="absolute inset-0 p-3.5 flex flex-col justify-end">
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <span className={`chip-${['mission', 'growth', 'energy', 'nova', 'mission', 'growth'][i]} !py-0.5 !px-1.5 !text-[9.5px] !text-white bg-opacity-80`}>
+                      <span className={`chip-${['mission', 'growth', 'energy', 'nova', 'mission', 'growth'][i % 6]} !py-0.5 !px-1.5 !text-[9.5px] !text-white bg-opacity-80`}>
                         <Award size={8} />A{String(i + 1).padStart(2, '0')}
                       </span>
                       <span className="chip-ink !py-0.5 !px-1.5 !text-[9.5px]">
@@ -1109,7 +1148,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="text-[12.5px] font-bold text-white drop-shadow leading-tight">
-                      {ACHIEVEMENT_TITLES[i]}
+                      {a.title}
                     </div>
                   </div>
                   <div className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
@@ -1132,7 +1171,7 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {CLASS_STATS.map((s, i) => (
+              {classStats.map((s, i) => (
                 <div
                   key={s.label}
                   onClick={s.label === '总人数' ? openClassmates : undefined}
