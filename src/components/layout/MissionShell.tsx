@@ -379,8 +379,14 @@ function ToastStack() {
     }
   }, [toasts.length, hasAutoCollapsed]);
 
+  // 点击小喇叭：有未读消息时直接清除（让消息消失）；无消息时再切换面板开合。
   const toggleToasts = () => {
-    setIsOpen(!isOpen);
+    if (toasts.length > 0) {
+      clearToasts();
+      setIsOpen(false);
+    } else {
+      setIsOpen(true);
+    }
   };
 
   const markAllRead = () => {

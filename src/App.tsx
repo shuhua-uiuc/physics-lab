@@ -19,8 +19,7 @@ import { apiEnabled, getToken } from '@/lib/apiClient';
 import { bootstrapFromApi } from '@/lib/bootstrap';
 
 import MissionShell from '@/components/layout/MissionShell';
-import { useUIStore, ToastType } from '@/store/uiStore';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useUIStore } from '@/store/uiStore';
 import { cn } from '@/lib/utils';
 
 import Login from '@/pages/Login';
@@ -155,46 +154,6 @@ function DashboardRoleGate() {
   return <Dashboard />;
 }
 
-function LegacyToastBridge() {
-  const { toasts, removeToast } = useUIStore();
-  const typeStyles: Record<ToastType, string> = {
-    info: 'from-mission-400 to-mission-600 shadow-glowMission',
-    success: 'from-growth-400 to-growth-600 shadow-[0_0_0_1px_rgba(34,197,94,0.2),0_12px_40px_rgba(34,197,94,0.18)]',
-    warning: 'from-alert-400 to-alert-600 shadow-glowEnergy',
-    error: 'from-danger-400 to-danger-600 shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_12px_40px_rgba(239,68,68,0.22)]',
-  };
-  if (!toasts.length) return null;
-  return (
-    <div className="fixed top-[90px] right-4 z-[120] w-full max-w-sm space-y-2.5 pointer-events-none">
-      <AnimatePresence initial={false}>
-        {toasts.slice(-3).map((t) => (
-          <motion.div
-            key={t.id}
-            initial={{ opacity: 0, x: 40, scale: 0.93 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 40, scale: 0.93 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 270 }}
-            className={cn(
-              'pointer-events-auto rounded-2xl text-white p-4 flex items-start gap-3 bg-gradient-to-br',
-              typeStyles[t.type],
-            )}
-          >
-            <div className="flex-1 min-w-0 text-sm font-semibold leading-relaxed">{t.msg}</div>
-            <button
-              onClick={() => removeToast(t.id)}
-              className="shrink-0 w-7 h-7 rounded-xl hover:bg-white/20 flex items-center justify-center transition"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 export default function App() {
   const initAuth = useAuthStore((s) => s.init);
   const role = useAuthStore((s) => s.role);
@@ -222,7 +181,6 @@ export default function App() {
 
   return (
     <Router>
-      <LegacyToastBridge />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
