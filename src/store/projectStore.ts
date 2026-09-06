@@ -43,6 +43,7 @@ interface ProjectState {
   showcaseItems: ShowcaseItem[];
   createProject: (partial: PartialProject) => Project;
   updateProject: (id: string, patch: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
   updateStatus: (id: string, status: ProjectStatus) => void;
   setProgress: (id: string, progressVal: number) => void;
   markProjectDone: (id: string) => void;
@@ -164,6 +165,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             : new Date(project.dueDate)
           ).toISOString(),
           rewardCoins: project.rewardCoins,
+          ownerGroupId: project.ownerGroupId,
         } as any);
         const fresh = await projectsApi.list();
         set({ projects: reviveProjectDates(fresh) });
@@ -185,6 +187,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
         return projectsApi.update(id, body as Partial<Project>);
       }, 'projects.update');
+    },
+
+    deleteProject: (id) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = projects.filter((p) => p.id !== id);
+      const nextRecruitments = recruitments.filter((r) => r.projectId !== id);
+      persist(next, nextRecruitments, showcaseItems);
+      set({ projects: next, recruitments: nextRecruitments });
+      syncToApi(() => projectsApi.remove(id), 'projects.remove');
     },
 
     updateStatus: (id, status) => {

@@ -121,6 +121,7 @@ export const projectsApi = {
     api.post<Project>('/api/projects', payload),
   update: (id: string, payload: Partial<Project>) =>
     api.put<Project>(`/api/projects/${id}`, payload),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/api/projects/${id}`),
   updateStatus: (id: string, status: string) =>
     api.put<Project>(`/api/projects/${id}/status`, { status }),
   updateProgress: (id: string, progress: number) =>

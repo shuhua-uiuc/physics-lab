@@ -237,6 +237,8 @@ class ProjectCreate(BaseModel):
     equipmentList: list[EquipmentItem] = []
     dueDate: datetime | None = None
     rewardCoins: int | None = 200
+    # 教师/管理员代建时指定所属小组；学生创建由后端绑定本人小组
+    ownerGroupId: str | None = None
 
 
 class ProjectUpdate(BaseModel):

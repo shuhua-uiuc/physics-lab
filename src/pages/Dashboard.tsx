@@ -30,6 +30,8 @@ import {
   Clock3,
   Coins,
   Plus,
+  Pencil,
+  Trash2,
   Eye,
   AlertTriangle,
   BookOpen,
@@ -39,7 +41,7 @@ import {
 import CollapsibleSection from '@/components/ui/CollapsibleSection';
 import { classesApi } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
-import type { User } from '@/data/mockData';
+import type { User, Project, ProjectStatus } from '@/data/mockData';
 
 function useCountUp(target: number, duration = 1800, start = 0) {
   const [value, setValue] = useState(start);
@@ -161,29 +163,6 @@ const LAB_NEWS = [
   { time: '11:02', group: '伽利略组', event: '项目文档上传', coin: 40, variant: 'growth' },
 ];
 
-const PROJECTS = [
-  {
-    name: '磁悬浮实验', color: 'mission',
-    colorHex: ['#4F7CFF', '#8FAEFF'],
-    members: 5, progress: 72, owner: '牛顿组', daysLeft: 3, daysUsed: 7,
-  },
-  {
-    name: '太阳能效率', color: 'growth',
-    colorHex: ['#22C55E', '#6CE9A6'],
-    members: 4, progress: 55, owner: '伽利略组', daysLeft: 5, daysUsed: 9,
-  },
-  {
-    name: '云室观察径迹', color: 'energy',
-    colorHex: ['#FF8A34', '#FFC695'],
-    members: 6, progress: 38, owner: '薛定谔猫队', daysLeft: 8, daysUsed: 4,
-  },
-  {
-    name: '霍尔效应测量', color: 'nova',
-    colorHex: ['#8B5CF6', '#B692F6'],
-    members: 4, progress: 88, owner: '麦克斯韦队', daysLeft: 2, daysUsed: 12,
-  },
-];
-
 const RECRUITS = [
   { title: '数据分析专家', project: '霍尔效应测量', role: '算法建模', reward: 120, daysLeft: 2 },
   { title: '硬件搭建助手', project: '驻波共振演示', role: '仪器操作', reward: 90, daysLeft: 4 },
@@ -227,6 +206,7 @@ export default function Dashboard() {
   const setGroupId = useAuthStore((s) => s.setGroupId);
   const getUserById = useGroupStore((s) => s.getUserById);
   const groups = useGroupStore((s) => s.groups);
+  const users = useGroupStore((s) => s.users);
   const joinGroup = useGroupStore((s) => s.joinGroup);
 
   // 同班同学弹窗
@@ -254,7 +234,7 @@ export default function Dashboard() {
     [groups, classId]
   );
   const { quizSessions, challenges } = useTheoryStore();
-  const { projects, showcaseItems } = useProjectStore();
+  const { projects, showcaseItems, createProject, updateProject, deleteProject } = useProjectStore();
   const { coinTxs } = useCoinStore();
 
   // 学生自助加入小组的本地状态
@@ -295,6 +275,96 @@ export default function Dashboard() {
     if (!groupId) return null;
     return getGroupById(groupId) || null;
   }, [groupId, getGroupById]);
+
+  // Project Galaxy：真实项目（学生仅见本组；教师/管理员见全部）
+  const isStaff = role === 'teacher' || role === 'admin';
+  const visibleProjects = useMemo(() => {
+    if (isStaff) return projects;
+    if (groupId) return projects.filter((p) => p.ownerGroupId === groupId);
+    return projects;
+  }, [projects, isStaff, groupId]);
+  const groupNameOf = (gid: string) => groups.find((g) => g.id === gid)?.name || '未分组';
+  const memberCountOf = (gid: string) => users.filter((u) => u.groupId === gid).length;
+
+  const PROJECT_COLOR: Record<ProjectStatus, { color: string; hex: [string, string] }> = {
+    planning: { color: 'ink', hex: ['#94A3B8', '#CBD5E1'] },
+    progress: { color: 'mission', hex: ['#4F7CFF', '#8FAEFF'] },
+    review: { color: 'alert', hex: ['#F59E0B', '#FBBF24'] },
+    done: { color: 'growth', hex: ['#22C55E', '#6CE9A6'] },
+    failed: { color: 'danger', hex: ['#F04438', '#F87171'] },
+    frozen: { color: 'nova', hex: ['#8B5CF6', '#B692F6'] },
+  };
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [pForm, setPForm] = useState({
+    title: '', topic: '', status: 'planning' as ProjectStatus, progress: 0,
+    dueDate: '', rewardCoins: 200, techPoints: '', difficulties: '', ownerGroupId: '',
+  });
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+
+  const openCreate = () => {
+    setEditing(null);
+    setPForm({
+      title: '', topic: '', status: 'planning', progress: 0,
+      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      rewardCoins: 200, techPoints: '', difficulties: '',
+      ownerGroupId: isStaff ? '' : (groupId || ''),
+    });
+    setFormOpen(true);
+  };
+  const openEdit = (p: Project) => {
+    setEditing(p);
+    const d = p.dueDate instanceof Date ? p.dueDate : new Date(p.dueDate);
+    setPForm({
+      title: p.title, topic: p.topic, status: p.status, progress: p.progress,
+      dueDate: isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10),
+      rewardCoins: p.rewardCoins, techPoints: p.techPoints || '', difficulties: p.difficulties || '',
+      ownerGroupId: p.ownerGroupId,
+    });
+    setFormOpen(true);
+  };
+
+  const submitProject = async () => {
+    if (!pForm.title.trim()) { pushToast('请填写项目名称', 'warning'); return; }
+    if (!pForm.topic.trim()) { pushToast('请填写课题', 'warning'); return; }
+    if (isStaff && !editing && !pForm.ownerGroupId) { pushToast('请选择所属小组', 'warning'); return; }
+    setSaving(true);
+    try {
+      const patch = {
+        title: pForm.title.trim(),
+        topic: pForm.topic.trim(),
+        status: pForm.status,
+        progress: Math.max(0, Math.min(100, Number(pForm.progress) || 0)),
+        dueDate: pForm.dueDate ? new Date(pForm.dueDate) : undefined,
+        rewardCoins: Number(pForm.rewardCoins) || 0,
+        techPoints: pForm.techPoints,
+        difficulties: pForm.difficulties,
+      };
+      if (editing) {
+        updateProject(editing.id, patch);
+        pushToast('项目已更新', 'success');
+      } else {
+        createProject({ ...patch, ownerGroupId: isStaff ? pForm.ownerGroupId : (groupId || '') });
+        pushToast('项目已创建', 'success');
+      }
+      setFormOpen(false);
+      setEditing(null);
+    } catch (e: any) {
+      pushToast(e?.message || '保存失败', 'error');
+    } finally { setSaving(false); }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      deleteProject(deleteTarget.id);
+      pushToast(`已删除项目「${deleteTarget.title}」`, 'success');
+    } catch (e: any) {
+      pushToast(e?.message || '删除失败', 'error');
+    } finally { setDeleteTarget(null); }
+  };
 
   const learningPathProgress = useMemo(() => {
     const hasQuizSession = quizSessions.length > 0;
@@ -615,38 +685,67 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <span className="mission-label">Project Galaxy</span>
-                <h3 className="text-[18px] font-extrabold text-ink-800">进行中任务 · 4 颗星球</h3>
+                <h3 className="text-[18px] font-extrabold text-ink-800">项目任务 · {visibleProjects.length} 个项目</h3>
               </div>
-              <button className="btn-ghost !py-1.5 !px-3 text-[12px]" onClick={() => { navigate('/projects'); pushToast('已打开项目中心，可在小组内创建新项目', 'info'); }}>
+              <button className="btn-ghost !py-1.5 !px-3 text-[12px]" onClick={openCreate}>
                 <Plus size={14} />创建项目
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {PROJECTS.map((p, idx) => (
-                <div key={p.name} onClick={() => { navigate('/projects'); pushToast(`进入《${p.name}》指挥中心 · ${p.owner}`, 'info'); }} role="button" tabIndex={0} className="planet-card group relative rounded-2xl overflow-hidden cursor-pointer outline-none focus:ring-2 focus:ring-mission-400/50" style={{ minHeight: 200 }}>
-                  <div className="absolute inset-0 bg-gradient-to-br p-[1px] rounded-2xl" style={{ background: `linear-gradient(135deg, ${p.colorHex[0]}40, ${p.colorHex[1]}20 60%, transparent)` }}>
+              {visibleProjects.length === 0 ? (
+                <div className="col-span-2 py-14 text-center text-[12px] text-ink-400">
+                  暂无项目，点击右上角「创建项目」新建
+                </div>
+              ) : visibleProjects.map((p, idx) => {
+                const color = PROJECT_COLOR[p.status];
+                const owner = groupNameOf(p.ownerGroupId);
+                const members = memberCountOf(p.ownerGroupId);
+                const start = p.startDate instanceof Date ? p.startDate : new Date(p.startDate);
+                const due = p.dueDate instanceof Date ? p.dueDate : new Date(p.dueDate);
+                const now = Date.now();
+                const daysLeft = Math.max(0, Math.ceil((due.getTime() - now) / 86400000));
+                const daysUsed = Math.max(0, Math.floor((now - start.getTime()) / 86400000));
+                return (
+                <div key={p.id} onClick={() => { navigate('/projects'); pushToast(`进入《${p.title}》指挥中心 · ${owner}`, 'info'); }} role="button" tabIndex={0} className="planet-card group relative rounded-2xl overflow-hidden cursor-pointer outline-none focus:ring-2 focus:ring-mission-400/50" style={{ minHeight: 200 }}>
+                  <div className="absolute inset-0 bg-gradient-to-br p-[1px] rounded-2xl" style={{ background: `linear-gradient(135deg, ${color.hex[0]}40, ${color.hex[1]}20 60%, transparent)` }}>
                     <div className="w-full h-full rounded-2xl bg-gradient-to-br from-white/90 via-white/75 to-ink-50/70 backdrop-blur-xl p-4 flex flex-col">
                       <div className="flex items-center justify-between">
-                        <span className={`chip-${p.color} !py-0.5 !px-2 !text-[10px]`}>
+                        <span className={`chip-${color.color} !py-0.5 !px-2 !text-[10px]`}>
                           <Target size={10} className="mr-0.5" />PROJ-{String(idx + 1).padStart(2, '0')}
                         </span>
-                        <div className="flex -space-x-1.5">
-                          {Array.from({ length: Math.min(3, p.members) }).map((_, j) => (
-                            <div key={j} className="w-5 h-5 rounded-full ring-2 ring-white shadow-sm" style={{ background: `linear-gradient(135deg, ${p.colorHex[0]}, ${p.colorHex[1]})` }} />
-                          ))}
-                          {p.members > 3 && (
-                            <div className="w-5 h-5 rounded-full ring-2 ring-white bg-ink-100 text-[9px] font-bold text-ink-600 flex items-center justify-center">+{p.members - 3}</div>
-                          )}
+                        <div className="flex items-center gap-1">
+                          <div className="flex -space-x-1.5">
+                            {Array.from({ length: Math.min(3, members) }).map((_, j) => (
+                              <div key={j} className="w-5 h-5 rounded-full ring-2 ring-white shadow-sm" style={{ background: `linear-gradient(135deg, ${color.hex[0]}, ${color.hex[1]})` }} />
+                            ))}
+                            {members > 3 && (
+                              <div className="w-5 h-5 rounded-full ring-2 ring-white bg-ink-100 text-[9px] font-bold text-ink-600 flex items-center justify-center">+{members - 3}</div>
+                            )}
+                          </div>
+                          <button
+                            title="编辑"
+                            className="w-6 h-6 rounded-lg bg-white/80 border border-ink-100 flex items-center justify-center text-ink-500 hover:text-mission-600 transition"
+                            onClick={(e) => { e.stopPropagation(); openEdit(p); }}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            title="删除"
+                            className="w-6 h-6 rounded-lg bg-white/80 border border-ink-100 flex items-center justify-center text-ink-500 hover:text-danger-600 transition"
+                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
                         </div>
                       </div>
 
                       <div className="relative flex-1 flex items-center justify-center my-2">
-                        <div className="planet-halo rounded-full" style={{ background: `radial-gradient(circle, ${p.colorHex[0]}50, transparent 70%)` }} />
+                        <div className="planet-halo rounded-full" style={{ background: `radial-gradient(circle, ${color.hex[0]}50, transparent 70%)` }} />
                         <div className="relative">
                           <div className="planet-ring" />
-                          <div className="w-16 h-16 rounded-full shadow-lg flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 30% 30%, ${p.colorHex[1]}, ${p.colorHex[0]})` }}>
-                            <span className="text-[11px] font-black text-white drop-shadow text-center leading-tight px-1">{p.name}</span>
+                          <div className="w-16 h-16 rounded-full shadow-lg flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 30% 30%, ${color.hex[1]}, ${color.hex[0]})` }}>
+                            <span className="text-[11px] font-black text-white drop-shadow text-center leading-tight px-1">{p.title}</span>
                           </div>
                         </div>
                       </div>
@@ -654,13 +753,13 @@ export default function Dashboard() {
                       <div className="mt-auto">
                         <div className="flex items-end justify-between mb-1.5">
                           <div>
-                            <div className="text-[13px] font-extrabold text-ink-800">{p.owner}</div>
+                            <div className="text-[13px] font-extrabold text-ink-800">{owner}</div>
                             <div className="text-[10px] text-ink-500 font-mono flex items-center gap-1 mt-0.5">
-                              <Clock3 size={9} />剩 {p.daysLeft} 天 · 已用 {p.daysUsed} 天
+                              <Clock3 size={9} />剩 {daysLeft} 天 · 已用 {daysUsed} 天
                             </div>
                           </div>
                           <div className="relative">
-                            <ProgressRing size={48} stroke={6} progress={p.progress} colorFrom={p.colorHex[0]} colorTo={p.colorHex[1]} />
+                            <ProgressRing size={48} stroke={6} progress={p.progress} colorFrom={color.hex[0]} colorTo={color.hex[1]} />
                             <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black tabular-nums text-ink-800">{p.progress}%</div>
                           </div>
                         </div>
@@ -668,7 +767,8 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1097,6 +1197,93 @@ export default function Dashboard() {
             )}
             <div className="mt-4 pt-3 border-t border-ink-100 text-center text-[11px] text-ink-400">
               共 {classmates.length} 名同学
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建/编辑项目 */}
+      {formOpen && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4" onClick={() => setFormOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-ink-800 flex items-center gap-2">
+                <Target size={18} className="text-mission-500" /> {editing ? '编辑项目' : '新建项目'}
+              </h3>
+              <button onClick={() => setFormOpen(false)} className="p-1.5 rounded-lg hover:bg-ink-100 transition-colors"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="label">项目名称</label>
+                <input className="input" value={pForm.title} onChange={(e) => setPForm({ ...pForm, title: e.target.value })} placeholder="例如：磁悬浮列车模型" />
+              </div>
+              <div>
+                <label className="label">课题</label>
+                <input className="input" value={pForm.topic} onChange={(e) => setPForm({ ...pForm, topic: e.target.value })} placeholder="例如：电磁学" />
+              </div>
+              {isStaff && !editing && (
+                <div>
+                  <label className="label">所属小组</label>
+                  <select className="input" value={pForm.ownerGroupId} onChange={(e) => setPForm({ ...pForm, ownerGroupId: e.target.value })}>
+                    <option value="">选择小组…</option>
+                    {groups.map((g) => (<option key={g.id} value={g.id}>{g.name}</option>))}
+                  </select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">状态</label>
+                  <select className="input" value={pForm.status} onChange={(e) => setPForm({ ...pForm, status: e.target.value as ProjectStatus })}>
+                    {(['planning', 'progress', 'review', 'done', 'failed', 'frozen'] as ProjectStatus[]).map((s) => (
+                      <option key={s} value={s}>{{ planning: '规划中', progress: '进行中', review: '评审中', done: '已完成', failed: '已失败', frozen: '已冻结' }[s]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">进度 %</label>
+                  <input type="number" min={0} max={100} className="input" value={pForm.progress} onChange={(e) => setPForm({ ...pForm, progress: Number(e.target.value) || 0 })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">截止日期</label>
+                  <input type="date" className="input" value={pForm.dueDate} onChange={(e) => setPForm({ ...pForm, dueDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">奖励币 ⚡</label>
+                  <input type="number" min={0} className="input" value={pForm.rewardCoins} onChange={(e) => setPForm({ ...pForm, rewardCoins: Number(e.target.value) || 0 })} />
+                </div>
+              </div>
+              <div>
+                <label className="label">技术要点（可选）</label>
+                <textarea className="input min-h-[70px] resize-y" value={pForm.techPoints} onChange={(e) => setPForm({ ...pForm, techPoints: e.target.value })} placeholder="# 支持 Markdown" />
+              </div>
+              <div>
+                <label className="label">技术难点（可选）</label>
+                <textarea className="input min-h-[70px] resize-y" value={pForm.difficulties} onChange={(e) => setPForm({ ...pForm, difficulties: e.target.value })} placeholder="# 支持 Markdown" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button className="btn-ghost flex-1" onClick={() => setFormOpen(false)}>取消</button>
+              <button className="btn-mission flex-1" onClick={submitProject} disabled={saving}>
+                {saving ? '保存中…' : editing ? '保存修改' : '创建项目'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-lg text-ink-800 flex items-center gap-2 mb-2">
+              <AlertTriangle size={18} className="text-danger-500" /> 删除项目
+            </h3>
+            <p className="text-[13px] text-ink-500 mb-5">确定删除「{deleteTarget.title}」？关联的招募公告也会一并删除，此操作不可撤销。</p>
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="flex-1 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-br from-danger-400 to-danger-600" onClick={confirmDelete}>确认删除</button>
             </div>
           </div>
         </div>

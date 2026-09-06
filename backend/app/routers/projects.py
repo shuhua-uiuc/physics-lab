@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import services
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Project, Recruitment, ShowcaseItem, User
+from ..models import Group, Project, Recruitment, ShowcaseItem, User
 from ..schemas import (
     AssignRequest,
     BidCreate,
@@ -66,13 +66,22 @@ def get_project(project_id: str, db: Session = Depends(get_db), _: User = Depend
 
 @router.post("/projects", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    if current.account_role in ("teacher", "admin"):
+        # 教师/管理员代建：必须指定目标小组
+        if not payload.ownerGroupId:
+            raise HTTPException(status_code=400, detail="教师创建项目需指定所属小组")
+        owner_group_id = payload.ownerGroupId
+        if not db.get(Group, owner_group_id):
+            raise HTTPException(status_code=400, detail="所选小组不存在")
+    else:
+        owner_group_id = _group_id(current)
     equip = [e.model_dump() for e in payload.equipmentList]
     now = datetime.now(timezone.utc)
     project = Project(
         id=services.gen_id("proj_"),
         title=payload.title,
         topic=payload.topic,
-        owner_group_id=_group_id(current),
+        owner_group_id=owner_group_id,
         start_date=now,
         due_date=payload.dueDate or (now + timedelta(days=30)),
         progress=0,
@@ -133,6 +142,24 @@ def update_project(
     db.commit()
     db.refresh(p)
     return p
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """删除项目（连同其招募公告）。权限：教师/管理员任意，学生仅本组项目。"""
+    p = db.get(Project, project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != p.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能删除本项目")
+    db.query(Recruitment).filter(Recruitment.project_id == project_id).delete(synchronize_session=False)
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/projects/{project_id}/status", response_model=ProjectOut)

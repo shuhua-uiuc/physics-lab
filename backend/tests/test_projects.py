@@ -121,3 +121,52 @@ def test_student_cannot_update_other_group_status(client, auth):
     project = _create_project(client, auth("u-1"))
     resp = client.put(f"/api/projects/{project['id']}/status", json={"status": "failed"}, headers=auth("u-3"))
     assert resp.status_code == 403
+
+
+def test_owner_can_delete_project(client, auth):
+    project = _create_project(client, auth("u-1"))
+    resp = client.delete(f"/api/projects/{project['id']}", headers=auth("u-1"))
+    assert resp.status_code == 200
+    ids = [p["id"] for p in client.get("/api/projects", headers=auth("u-1")).json()]
+    assert project["id"] not in ids
+
+
+def test_student_cannot_delete_other_group(client, auth):
+    project = _create_project(client, auth("u-1"))
+    resp = client.delete(f"/api/projects/{project['id']}", headers=auth("u-3"))
+    assert resp.status_code == 403
+
+
+def test_teacher_can_delete_any_project(client, auth):
+    project = _create_project(client, auth("u-1"))
+    resp = client.delete(f"/api/projects/{project['id']}", headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 200
+
+
+def test_delete_project_not_found(client, auth):
+    resp = client.delete("/api/projects/proj_nope", headers=auth("u-1"))
+    assert resp.status_code == 404
+
+
+def test_delete_project_requires_auth(client):
+    resp = client.delete("/api/projects/proj_x")
+    assert resp.status_code == 401
+
+
+def test_teacher_create_project_with_group(client, auth):
+    resp = client.post(
+        "/api/projects",
+        json={"title": "教师代建", "topic": "力学", "ownerGroupId": "g-2"},
+        headers=auth("teacher", "teacher123"),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ownerGroupId"] == "g-2"
+
+
+def test_teacher_create_project_requires_group(client, auth):
+    resp = client.post(
+        "/api/projects",
+        json={"title": "教师代建", "topic": "力学"},
+        headers=auth("teacher", "teacher123"),
+    )
+    assert resp.status_code == 400
