@@ -2,17 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Trophy,
-  Crown,
   Star,
   TrendingUp,
-  TrendingDown,
-  Minus,
-  Zap,
-  Target,
-  Medal,
-  Sparkles,
   Flame,
-  Award,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -26,8 +18,10 @@ import {
 import MissionShell from '@/components/layout/MissionShell';
 import AvatarStack from '@/components/ui/AvatarStack';
 import { useGroupStore } from '@/store/groupStore';
+import { useAuthStore } from '@/store/authStore';
+import { useCoinStore } from '@/store/coinStore';
 import { classesApi } from '@/lib/apiService';
-import { User, SchoolClass } from '@/data/mockData';
+import { SchoolClass } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 type TabKey = 'total' | 'month' | 'week' | 'personal';
@@ -48,45 +42,12 @@ const GROUP_COLORS = [
   { main: '#06B6D4', light: '#67E8F9', grad: 'from-cyan-400 to-cyan-600' },
 ];
 
-function useTicker(target: number, duration = 900) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    let raf: number;
-    const t0 = performance.now();
-    const step = (now: number) => {
-      const p = Math.min(1, (now - t0) / duration);
-      const ease = 1 - Math.pow(1 - p, 3);
-      setVal(Math.round(target * ease));
-      if (p < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return val;
-}
-
-function buildSeasonTrend() {
-  const days: Array<Record<string, any>> = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const label = `${d.getMonth() + 1}/${d.getDate()}`;
-    const base = [6800, 6200, 5600, 5100, 4700, 4300];
-    const row: Record<string, any> = { date: label };
-    ['牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'].forEach((name, gi) => {
-      const seed = (gi * 7 + i * 3) % 11;
-      row[name] = Math.round(base[gi] + seed * 23 + Math.sin(i * 0.3 + gi) * 120);
-    });
-    days.push(row);
-  }
-  return days;
-}
-
-const GROUP_NAMES6 = ['牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'];
-
 export default function ResearchLeague() {
   const { groups, users } = useGroupStore();
+  const { coinTxs } = useCoinStore();
+  const { classId: myClassId, role } = useAuthStore();
   const [tab, setTab] = useState<TabKey>('total');
-  const trendData = useMemo(() => buildSeasonTrend(), []);
+  const DAY = 86400000;
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   useEffect(() => {
@@ -94,20 +55,96 @@ export default function ResearchLeague() {
   }, []);
   const classesById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes]);
 
-  // 真实小组能量榜：按班级分组，组内按能量币降序
+  const isStaff = role === 'teacher' || role === 'admin';
+  // 学生仅见本班排名；教师/管理员见全部
+  const inScope = (cid: string | null | undefined) => isStaff || cid === myClassId;
+
+  // 近 7/30 天各组能量币增量
+  const periodSum = useMemo(() => {
+    const mk = (startMs: number) => {
+      const m: Record<string, number> = {};
+      for (const tx of coinTxs) {
+        const t = tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt);
+        if (t.getTime() >= startMs) m[tx.groupId] = (m[tx.groupId] || 0) + tx.delta;
+      }
+      return m;
+    };
+    return { week: mk(Date.now() - 7 * DAY), month: mk(Date.now() - 30 * DAY) };
+  }, [coinTxs]);
+
+  // 有成员且在本班可见范围内的小组
+  const memberedGroups = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const u of users) if (u.groupId) counts[u.groupId] = (counts[u.groupId] || 0) + 1;
+    return groups
+      .map((g) => ({ ...g, memberCount: counts[g.id] || 0 }))
+      .filter((g) => g.memberCount > 0 && inScope(g.classId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, users, myClassId, isStaff]);
+
+  // 小组榜单：总榜=totalCoins；月/周=period增量；按班级分组降序
   const rankingByClass = useMemo(() => {
+    const coinOf = (g: { id: string; totalCoins: number }) =>
+      tab === 'week' ? periodSum.week[g.id] || 0 :
+      tab === 'month' ? periodSum.month[g.id] || 0 : g.totalCoins;
     const map: Record<string, { classId: string; className: string; rows: { groupId: string; name: string; coins: number; memberCount: number }[] }> = {};
-    for (const g of groups) {
-      const memberCount = users.filter((u) => u.groupId === g.id).length;
-      if (memberCount === 0) continue;
+    for (const g of memberedGroups) {
       const cid = g.classId || 'unknown';
       if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, rows: [] };
-      map[cid].rows.push({ groupId: g.id, name: g.name, coins: g.totalCoins, memberCount });
+      map[cid].rows.push({ groupId: g.id, name: g.name, coins: coinOf(g), memberCount: g.memberCount });
     }
     return Object.values(map)
       .map((c) => ({ ...c, rows: [...c.rows].sort((a, b) => b.coins - a.coins) }))
       .sort((a, b) => a.className.localeCompare(b.className));
-  }, [groups, users, classesById]);
+  }, [memberedGroups, classesById, tab, periodSum]);
+
+  // 个人榜：按 personalCoins，按班级分组
+  const personalByClass = useMemo(() => {
+    const map: Record<string, { classId: string; className: string; rows: { userId: string; name: string; coins: number }[] }> = {};
+    for (const u of users) {
+      if (!inScope(u.classId)) continue;
+      const cid = u.classId || 'unknown';
+      if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, rows: [] };
+      map[cid].rows.push({ userId: u.id, name: u.name, coins: u.personalCoins });
+    }
+    return Object.values(map)
+      .map((c) => ({ ...c, rows: [...c.rows].sort((a, b) => b.coins - a.coins) }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [users, classesById, myClassId, isStaff]);
+
+  // 30 天能量趋势：每日各小组累计增量
+  const trend = useMemo(() => {
+    const groupNames = memberedGroups.map((g) => g.name);
+    const byDay: Record<string, Record<string, number>> = {};
+    for (const tx of coinTxs) {
+      const t = tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt);
+      const key = `${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`;
+      (byDay[key] ||= {})[tx.groupId] = (byDay[key][tx.groupId] || 0) + tx.delta;
+    }
+    const running: Record<string, number> = {};
+    const days: Record<string, any>[] = [];
+    const start = new Date(); start.setDate(start.getDate() - 29);
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(start.getTime() + i * DAY);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      const dayTxs = byDay[key];
+      if (dayTxs) for (const gid in dayTxs) running[gid] = (running[gid] || 0) + dayTxs[gid];
+      const row: Record<string, any> = { date: `${d.getMonth() + 1}/${d.getDate()}` };
+      for (const g of memberedGroups) row[g.name] = running[g.id] || 0;
+      days.push(row);
+    }
+    return { days, groupNames };
+  }, [coinTxs, memberedGroups]);
+
+  // 本周 MVP：本周能量累计前 3 小组
+  const mvp = useMemo(() => {
+    return [...memberedGroups]
+      .map((g) => ({ groupId: g.id, name: g.name, coins: periodSum.week[g.id] || 0, memberCount: g.memberCount }))
+      .sort((a, b) => b.coins - a.coins)
+      .slice(0, 3);
+  }, [memberedGroups, periodSum]);
+
+  const isPersonal = tab === 'personal';
 
   return (
     <MissionShell>
@@ -164,10 +201,10 @@ export default function ResearchLeague() {
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-8 space-y-6">
             <div className="space-y-5">
-              {rankingByClass.length === 0 ? (
-                <div className="glass-card p-10 text-center text-ink-400 text-[13px]">暂无已成组小组</div>
+              {(isPersonal ? personalByClass : rankingByClass).length === 0 ? (
+                <div className="glass-card p-10 text-center text-ink-400 text-[13px]">暂无排名数据</div>
               ) : (
-                rankingByClass.map((cls) => (
+                (isPersonal ? personalByClass : rankingByClass).map((cls) => (
                   <motion.section
                     key={cls.classId}
                     initial={{ opacity: 0, y: 20 }}
@@ -180,22 +217,24 @@ export default function ResearchLeague() {
                         <Trophy size={18} className="text-alert-500" />
                         {cls.className}
                       </h3>
-                      <span className="text-[11px] text-ink-400">{cls.rows.length} 个小组 · 按能量币排序</span>
+                      <span className="text-[11px] text-ink-400">
+                        {cls.rows.length} {isPersonal ? '人' : '个小组'} · {tab === 'week' ? '本周' : tab === 'month' ? '本月' : '累计'}
+                      </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-[13px]">
                         <thead>
                           <tr className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider">
                             <th className="text-left py-3 px-2 font-medium">名次</th>
-                            <th className="text-left py-3 px-2 font-medium">小组</th>
-                            <th className="text-left py-3 px-2 font-medium">组员</th>
+                            <th className="text-left py-3 px-2 font-medium">{isPersonal ? '学生' : '小组'}</th>
+                            {!isPersonal && <th className="text-left py-3 px-2 font-medium">组员</th>}
                             <th className="text-right py-3 px-2 font-medium">能量 ⚡</th>
                           </tr>
                         </thead>
                         <tbody>
                           {cls.rows.map((r, i) => (
                             <motion.tr
-                              key={r.groupId}
+                              key={(r as any).groupId || (r as any).userId}
                               initial={{ opacity: 0, x: -10 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ duration: 0.35, delay: 0.15 + i * 0.05 }}
@@ -213,7 +252,7 @@ export default function ResearchLeague() {
                                 </div>
                               </td>
                               <td className="py-3 px-2 font-semibold text-ink-800">{r.name}</td>
-                              <td className="py-3 px-2 text-ink-500">{r.memberCount} 人</td>
+                              {!isPersonal && <td className="py-3 px-2 text-ink-500">{(r as any).memberCount} 人</td>}
                               <td className="py-3 px-2 text-right font-bold tabular-nums text-ink-800">
                                 {r.coins.toLocaleString()} ⚡
                               </td>
@@ -244,10 +283,10 @@ export default function ResearchLeague() {
               </div>
               <div className="h-[260px] -mx-3">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                  <AreaChart data={trend.days} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
                     <defs>
-                      {GROUP_NAMES6.map((n, i) => {
-                        const c = GROUP_COLORS[i];
+                      {trend.groupNames.map((n, i) => {
+                        const c = GROUP_COLORS[i % GROUP_COLORS.length];
                         return (
                           <linearGradient key={n} id={`grad-${i}`} x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor={c.main} stopOpacity={0.45} />
@@ -283,8 +322,8 @@ export default function ResearchLeague() {
                       labelStyle={{ fontWeight: 700, color: '#1E293B', marginBottom: 6 }}
                       formatter={(value: any, name: any) => [`${Number(value).toLocaleString()} ⚡`, name]}
                     />
-                    {GROUP_NAMES6.map((n, i) => {
-                      const c = GROUP_COLORS[i];
+                    {trend.groupNames.map((n, i) => {
+                      const c = GROUP_COLORS[i % GROUP_COLORS.length];
                       return (
                         <Area
                           key={n}
@@ -302,8 +341,8 @@ export default function ResearchLeague() {
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3">
-                {GROUP_NAMES6.slice(0, 6).map((n, i) => {
-                  const c = GROUP_COLORS[i];
+                {trend.groupNames.map((n, i) => {
+                  const c = GROUP_COLORS[i % GROUP_COLORS.length];
                   return (
                     <div key={n} className="flex items-center gap-1.5">
                       <span
@@ -341,18 +380,14 @@ export default function ResearchLeague() {
                   <span className="chip-growth !py-0.5 !px-2 text-[10px]">本周 MVP</span>
                 </div>
                 <div className="space-y-3">
-                  {[
-                    { idx: 0, highlight: '挑战胜率 92%', feat: '电磁学高阶对决五连胜' },
-                    { idx: 1, highlight: '交付速度 +32%', feat: '驻波项目提前 5 天结题' },
-                    { idx: 2, highlight: '组员协作 4.9★', feat: '跨组招募 6 次零差评' },
-                  ].map((row, i) => {
-                    const gi = row.idx;
-                    const g = groups[gi];
-                    const members = users.filter((u) => u.groupId === g.id).slice(0, 5);
-                    const c = GROUP_COLORS[gi];
+                  {mvp.length === 0 ? (
+                    <div className="text-center py-6 text-ink-400 text-[12px]">本周暂无能量入账</div>
+                  ) : mvp.map((m, i) => {
+                    const members = users.filter((u) => u.groupId === m.groupId).slice(0, 5);
+                    const c = GROUP_COLORS[i % GROUP_COLORS.length];
                     return (
                       <motion.div
-                        key={i}
+                        key={m.groupId}
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.35, delay: 0.3 + i * 0.06 }}
@@ -372,13 +407,13 @@ export default function ResearchLeague() {
                                 background: `linear-gradient(135deg, ${c.main}, ${c.light})`,
                               }}
                             >
-                              {String.fromCharCode(65 + gi)}
+                              {String.fromCharCode(65 + i)}
                             </div>
                             <div className="min-w-0">
                               <div className="font-bold text-[13px] text-ink-800 truncate">
-                                {GROUP_NAMES6[gi]}
+                                {m.name}
                               </div>
-                              <div className="text-[11px] text-ink-500 mt-0.5">{row.highlight}</div>
+                              <div className="text-[11px] text-ink-500 mt-0.5">本周 +{m.coins}⚡ · {m.memberCount} 人</div>
                             </div>
                           </div>
                           <span className="chip-energy !py-0.5 !px-2 text-[10px] shrink-0">
@@ -387,7 +422,6 @@ export default function ResearchLeague() {
                         </div>
                         <div className="flex items-center justify-between mt-3">
                           <AvatarStack users={members} max={4} size={24} />
-                          <span className="text-[11px] text-ink-500 truncate ml-2">{row.feat}</span>
                         </div>
                       </motion.div>
                     );
@@ -399,21 +433,5 @@ export default function ResearchLeague() {
         </div>
       </div>
     </MissionShell>
-  );
-}
-
-function CoinsTicker({ target }: { target: number }) {
-  const val = useTicker(target);
-  return (
-    <span className="ticker ticker-anim text-[20px] font-extrabold text-gradient-energy tabular-nums leading-none">
-      {val.toLocaleString()}
-    </span>
-  );
-}
-
-function ProjectsTicker({ target }: { target: number }) {
-  const val = useTicker(target, 600);
-  return (
-    <span className="ticker ticker-anim tabular-nums">{val}</span>
   );
 }
