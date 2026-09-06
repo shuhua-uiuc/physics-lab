@@ -154,8 +154,8 @@ def batch_upload_students(
     """批量上传学生名单到指定班级（教师或管理员）。
 
     - 每班人数上限 30
-    - 用户名自动生成（如未提供）：classId-s-序号
-    - 密码默认 student123（如未提供）
+    - 用户名默认取学生姓名（如未提供，可直接用姓名登录）
+    - 密码默认 student_default_password（初始密码 123456，如未提供）
     """
     cls = db.get(Class, class_id)
     if not cls:
@@ -179,10 +179,8 @@ def batch_upload_students(
 
     for item in payload.students:
         name = item.name.strip()
-        # 用户名：优先使用传入的，否则自动生成
-        username = (item.username or "").strip()
-        if not username:
-            username = gen_id(f"{class_id}_s_")
+        # 用户名：优先使用传入的，否则取学生姓名（便于用姓名直接登录）
+        username = (item.username or "").strip() or name
         # 检查用户名唯一
         if db.query(User).filter(User.username == username).first():
             raise HTTPException(status_code=409, detail=f"用户名「{username}」已被占用")

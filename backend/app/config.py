@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 720  # 12 小时
 
     teacher_password: str = "admin123"
-    student_default_password: str = "student123"
+    student_default_password: str = "123456"
     admin_password: str = "admin@123"
 
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
