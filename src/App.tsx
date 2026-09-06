@@ -34,6 +34,7 @@ import AchievementHall from '@/pages/AchievementHall';
 import ResearchProfile from '@/pages/ResearchProfile';
 import TeacherOverview from '@/pages/TeacherOverview';
 import TeacherGroups from '@/pages/TeacherGroups';
+import TeacherProjects from '@/pages/TeacherProjects';
 import AdminConsole from '@/pages/AdminConsole';
 import StudentRoster from '@/pages/StudentRoster';
 import TeacherSafety from '@/pages/TeacherSafety';
@@ -356,6 +357,16 @@ export default function App() {
             <TeacherOnly>
               <MissionShell>
                 <TeacherGroups />
+              </MissionShell>
+            </TeacherOnly>
+          }
+        />
+        <Route
+          path="/teacher/projects"
+          element={
+            <TeacherOnly>
+              <MissionShell>
+                <TeacherProjects />
               </MissionShell>
             </TeacherOnly>
           }

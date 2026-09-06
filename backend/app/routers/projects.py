@@ -138,6 +138,10 @@ def update_project(
         p.photos = data["photos"]
     if "rewardCoins" in data and data["rewardCoins"] is not None:
         p.reward_coins = data["rewardCoins"]
+    if "status" in data and data["status"] is not None:
+        p.status = data["status"]
+    if "progress" in data and data["progress"] is not None:
+        p.progress = max(0, min(100, data["progress"]))
 
     db.commit()
     db.refresh(p)

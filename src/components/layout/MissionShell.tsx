@@ -69,6 +69,7 @@ const NAV_ITEMS: NavItem[] = [
 const TEACHER_NAV_ITEMS: NavItem[] = [
   { id: 't-overview', label: 'Mission Overview', icon: Gauge, to: '/teacher/overview' },
   { id: 't-groups', label: 'Fleet Management', icon: Users, to: '/teacher/groups' },
+  { id: 't-projects', label: 'Project & Recruitment', icon: FolderKanban, to: '/teacher/projects' },
   { id: 't-roster', label: 'Student Roster', icon: ClipboardList, to: '/teacher/roster' },
   { id: 't-question', label: 'Question Bank', icon: BookOpen, to: '/teacher/question-bank' },
   { id: 't-safety', label: 'Safety Center', icon: ShieldCheck, to: '/teacher/safety' },

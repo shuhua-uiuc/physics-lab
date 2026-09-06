@@ -75,7 +75,7 @@ export default function Login() {
   const [teacherErr, setTeacherErr] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [studentPwd, setStudentPwd] = useState('student123');
+  const [studentPwd, setStudentPwd] = useState('123456');
   const [studentErr, setStudentErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -156,8 +156,9 @@ export default function Login() {
     if (apiEnabled) {
       setSubmitting(true);
       try {
-        // 后端模式：学生登录名即其 userId（如 u-01）
-        await loginWithApi(selectedUserId, studentPwd.trim() || 'student123');
+        // 后端模式：学生用户名即其姓名（批量导入已把 username 设为姓名），初始密码 123456
+        const su = groupUsers.find((x) => x.id === selectedUserId);
+        await loginWithApi(su?.name || selectedUserId, studentPwd.trim() || '123456');
         await bootstrapFromApi(true);
         setStudentErr('');
         navigate('/dashboard');

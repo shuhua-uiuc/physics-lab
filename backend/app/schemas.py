@@ -256,6 +256,8 @@ class ProjectUpdate(BaseModel):
     results: str | None = None
     photos: list[str] | None = None
     rewardCoins: int | None = Field(default=None, ge=0)
+    status: str | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)
 
 
 class ProjectStatusUpdate(BaseModel):
