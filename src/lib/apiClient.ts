@@ -1,3 +1,5 @@
+import { LS_KEYS } from '../data/mockData';
+
 /**
  * 后端 API 客户端。
  *
@@ -57,6 +59,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const data = text ? JSON.parse(text) : undefined;
 
   if (!res.ok) {
+    if (res.status === 401 && token) {
+      // 已登录态失效（请求带了 token 却被拒）：清空登录信息并回到登录页。
+      // 未带 token 的 401（如登录/注册密码错误）不触发，避免误判为会话过期。
+      setToken(null);
+      localStorage.removeItem(LS_KEYS.CURRENT_USER);
+      if (typeof window !== 'undefined') window.location.href = '/login';
+    }
     const detail = (data && (data.detail || data.message)) || res.statusText;
     throw new ApiError(res.status, typeof detail === 'string' ? detail : '请求失败');
   }
