@@ -13,12 +13,14 @@ import {
   XCircle,
   Award,
   Send,
+  Megaphone,
   SlidersHorizontal,
   Home,
   Globe,
 } from 'lucide-react';
 import MissionShell from '@/components/layout/MissionShell';
 import AvatarStack from '@/components/ui/AvatarStack';
+import RecruitDialog from '@/components/ui/RecruitDialog';
 import { useGroupStore } from '@/store/groupStore';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -125,9 +127,12 @@ function useTicker(target: number, duration = 800) {
 
 export default function ResearchMarketplace() {
   const { groups, users } = useGroupStore();
-  const { groupId: currentGroupId, userId } = useAuthStore();
+  const { groupId: currentGroupId, userId, role } = useAuthStore();
   const { recruitments, projects, placeBid } = useProjectStore();
   const pushToast = useUIStore((s) => s.pushToast);
+  const myGroupProject = useMemo(() => projects.find((p) => p.ownerGroupId === currentGroupId), [projects, currentGroupId]);
+  const isLeader = role === 'teacher' || role === 'admin' || (currentGroupId ? users.find((u) => u.id === userId)?.role === 'leader' : false);
+  const [recruitOpen, setRecruitOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [activeSkills, setActiveSkills] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>('reward');
@@ -322,7 +327,14 @@ export default function ResearchMarketplace() {
                   </h2>
                   <p className="text-[11px] text-ink-400">本组发布的需求，组内成员可直接认领</p>
                 </div>
-                <span className="chip-mission ml-auto">{myGroupRecs.length} 个</span>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="chip-mission">{myGroupRecs.length} 个</span>
+                  {isLeader && myGroupProject && (
+                    <button className="btn-energy !py-1.5 !px-3 text-[12px] flex items-center gap-1.5" onClick={() => setRecruitOpen(true)}>
+                      <Megaphone size={13} />发布任务招募
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {myGroupRecs.map((r, idx) => (
@@ -495,6 +507,8 @@ export default function ResearchMarketplace() {
           </div>
         </div>
       </div>
+
+      <RecruitDialog open={recruitOpen} onClose={() => setRecruitOpen(false)} projectId={myGroupProject?.id || ''} projectTitle={myGroupProject?.title || ''} />
     </MissionShell>
   );
 }

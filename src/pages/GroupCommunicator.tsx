@@ -6,6 +6,7 @@ import { useTheoryStore } from '@/store/theoryStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useCoinStore } from '@/store/coinStore';
 import { useUIStore } from '@/store/uiStore';
+import RecruitDialog from '@/components/ui/RecruitDialog';
 import {
   Swords,
   Users,
@@ -228,6 +229,9 @@ export default function GroupCommunicator() {
   
   const myGroup = getGroupById(groupId || '');
   const myCoins = myGroup?.totalCoins || 0;
+  const myGroupProject = projects.find((p) => p.ownerGroupId === groupId);
+  const isLeader = role === 'teacher' || role === 'admin' || (groupId ? getGroupUsers(groupId).find((u) => u.id === userId)?.role === 'leader' : false);
+  const [recruitOpen, setRecruitOpen] = useState(false);
   
   const openChallenges = useMemo(
     () => challenges.filter(c => c.status === 'open' && c.creatorGroupId !== groupId),
@@ -536,10 +540,17 @@ export default function GroupCommunicator() {
             </div>
             
             <div className="rounded-[24px] bg-gradient-to-br from-orange-50/70 via-white/90 to-amber-50/50 border border-orange-100/50 p-6">
-              <h2 className="font-serif text-lg font-semibold text-physics-800 mb-5 flex items-center gap-2">
-                <Megaphone size={20} className="text-orange-500" />
-                我发布的招募
-              </h2>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-serif text-lg font-semibold text-physics-800 flex items-center gap-2">
+                  <Megaphone size={20} className="text-orange-500" />
+                  我发布的招募
+                </h2>
+                {isLeader && myGroupProject && (
+                  <button className="btn-energy !py-1.5 !px-3 text-[12px] flex items-center gap-1.5" onClick={() => setRecruitOpen(true)}>
+                    <Megaphone size={13} />发布招募公告
+                  </button>
+                )}
+              </div>
               {myRecruitments.length === 0 ? (
                 <div className="p-8 text-center">
                   <Megaphone size={32} className="mx-auto text-ink-300 mb-2" />
@@ -873,6 +884,8 @@ export default function GroupCommunicator() {
           </div>
         </div>
       )}
+
+      <RecruitDialog open={recruitOpen} onClose={() => setRecruitOpen(false)} projectId={myGroupProject?.id || ''} projectTitle={myGroupProject?.title || ''} />
     </div>
   );
 }

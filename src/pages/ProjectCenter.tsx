@@ -137,9 +137,10 @@ export default function ProjectCenter() {
   const [kanbanOpen, setKanbanOpen] = useState(false);
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set(['t-0-1', 't-0-2', 't-1-1']));
   const pushToast = useUIStore((s) => s.pushToast);
-  const { projects } = useProjectStore();
+  const { projects, recruitments } = useProjectStore();
   const { groups, users } = useGroupStore();
   const planets = useMemo(() => buildPlanets(projects, groups, users), [projects, groups, users]);
+  const projectRecruits = useMemo(() => recruitments.filter((r) => r.projectId === selectedId), [recruitments, selectedId]);
 
   const filteredPlanets = planets
     .filter((p) => {
@@ -638,6 +639,29 @@ export default function ProjectCenter() {
                         <span className="text-xs font-bold text-ink-600">{selectedPlanet.owners.length} 名成员</span>
                       </div>
                       <span className="text-xs text-nova-600 font-bold">{selectedPlanet.groupName}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-energy-50/60 to-alert-50/40 border border-energy-100/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ListTodo size={14} className="text-energy-500" />
+                      <span className="text-sm font-black text-ink-800">招募任务</span>
+                      <span className="chip-energy !py-0.5 !text-[10px] ml-auto">{projectRecruits.length} 条</span>
+                    </div>
+                    <div className="space-y-2">
+                      {projectRecruits.length === 0 ? (
+                        <div className="text-xs text-ink-400 text-center py-2">暂无招募，组长发布后学生可投标</div>
+                      ) : projectRecruits.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-white/70">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-ink-700 truncate">{r.title}</div>
+                            <div className="text-[10px] text-ink-400">
+                              {r.status === 'open' ? '招募中' : r.status === 'assigned' ? '已分配' : '已结束'} · {r.bids?.length || 0} 人投
+                            </div>
+                          </div>
+                          <span className="chip-energy !py-0.5 !px-2 text-[10px] shrink-0">+{r.reward}⚡</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
