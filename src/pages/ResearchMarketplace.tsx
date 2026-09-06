@@ -125,8 +125,8 @@ function useTicker(target: number, duration = 800) {
 
 export default function ResearchMarketplace() {
   const { groups, users } = useGroupStore();
-  const { groupId: currentGroupId } = useAuthStore();
-  const { recruitments, projects } = useProjectStore();
+  const { groupId: currentGroupId, userId } = useAuthStore();
+  const { recruitments, projects, placeBid } = useProjectStore();
   const pushToast = useUIStore((s) => s.pushToast);
   const [search, setSearch] = useState('');
   const [activeSkills, setActiveSkills] = useState<string[]>([]);
@@ -326,7 +326,7 @@ export default function ResearchMarketplace() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {myGroupRecs.map((r, idx) => (
-                  <RecCard key={r.rec.id} r={r} idx={idx} groups={groups} usersByIdMap={usersByIdMap} groupUsersById={groupUsersById} pushToast={pushToast} />
+                  <RecCard key={r.rec.id} r={r} idx={idx} groups={groups} usersByIdMap={usersByIdMap} groupUsersById={groupUsersById} pushToast={pushToast} userId={userId} placeBid={placeBid} />
                 ))}
                 {myGroupRecs.length === 0 && (
                   <div className="col-span-full glass-card p-10 text-center rounded-2xl">
@@ -351,7 +351,7 @@ export default function ResearchMarketplace() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {otherGroupRecs.map((r, idx) => (
-                  <RecCard key={r.rec.id} r={r} idx={idx} groups={groups} usersByIdMap={usersByIdMap} groupUsersById={groupUsersById} pushToast={pushToast} />
+                  <RecCard key={r.rec.id} r={r} idx={idx} groups={groups} usersByIdMap={usersByIdMap} groupUsersById={groupUsersById} pushToast={pushToast} userId={userId} placeBid={placeBid} />
                 ))}
                 {otherGroupRecs.length === 0 && (
                   <div className="col-span-full glass-card p-10 text-center rounded-2xl">
@@ -515,9 +515,11 @@ interface RecCardProps {
   usersByIdMap: Map<string, User>;
   groupUsersById: (gid: string) => User[];
   pushToast: (msg: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
+  userId: string | null;
+  placeBid: (recruitmentId: string, bid: { userId: string; skillDesc: string; hours: number }) => void;
 }
 
-function RecCard({ r, idx, groups, usersByIdMap, groupUsersById, pushToast }: RecCardProps) {
+function RecCard({ r, idx, groups, usersByIdMap, groupUsersById, pushToast, userId, placeBid }: RecCardProps) {
   const { rec, projectName, ownerGroupId } = r;
   const g = groups.find((x) => x.id === ownerGroupId);
   const members = groupUsersById(ownerGroupId);
@@ -576,7 +578,15 @@ function RecCard({ r, idx, groups, usersByIdMap, groupUsersById, pushToast }: Re
         </div>
         <button
           className="btn-mission w-full !py-2.5 !px-3 text-[13px]"
-          onClick={() => pushToast(`已提交投标申请 · ${rec.title} · 等待项目组审核 ⚡`, 'success')}
+          onClick={() => {
+            const bidUserId = userId;
+            if (!bidUserId) {
+              pushToast('请先登录后再投标', 'warning');
+              return;
+            }
+            placeBid(rec.id, { userId: bidUserId, skillDesc: '', hours: 1 });
+            pushToast(`已提交投标申请 · ${rec.title} · 等待项目组审核 ⚡`, 'success');
+          }}
         >
           <Send size={14} />
           立即投标

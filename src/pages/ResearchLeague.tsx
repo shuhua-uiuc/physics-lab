@@ -98,8 +98,9 @@ function buildLeaderboard(users: User[], groups: any[]): LeaderEntry[] {
   const deltas = [+12, +8, +5, +2, 0, -1, -3, +1, 0, -2];
   const entries: LeaderEntry[] = [];
   for (let i = 0; i < 10; i++) {
-    const gi = i % 6;
+    const gi = i % Math.max(groups.length, 1);
     const group = groups[gi];
+    if (!group) continue;
     entries.push({
       rank: i + 1,
       groupId: group.id,
@@ -121,7 +122,7 @@ export default function ResearchLeague() {
 
   const top3 = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
-  const maxCoins = leaderboard[0].coins;
+  const maxCoins = leaderboard[0]?.coins ?? 1;
 
   return (
     <MissionShell>

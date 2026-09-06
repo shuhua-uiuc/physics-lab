@@ -617,7 +617,7 @@ export default function Dashboard() {
                 <span className="mission-label">Project Galaxy</span>
                 <h3 className="text-[18px] font-extrabold text-ink-800">进行中任务 · 4 颗星球</h3>
               </div>
-              <button className="btn-ghost !py-1.5 !px-3 text-[12px]" onClick={() => { navigate('/projects'); pushToast('进入项目中心 · 已自动创建新项目草稿 ✏️', 'success'); }}>
+              <button className="btn-ghost !py-1.5 !px-3 text-[12px]" onClick={() => { navigate('/projects'); pushToast('已打开项目中心，可在小组内创建新项目', 'info'); }}>
                 <Plus size={14} />创建项目
               </button>
             </div>
