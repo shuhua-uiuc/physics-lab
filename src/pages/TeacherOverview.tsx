@@ -44,7 +44,8 @@ import { useCoinStore } from '@/store/coinStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useQuestionBankStore } from '@/store/questionBankStore';
 import { bootstrapFromApi } from '@/lib/bootstrap';
-import { CoinSource, ProjectStatus, ReviewableQuestion } from '@/data/mockData';
+import { classesApi } from '@/lib/apiService';
+import { CoinSource, ProjectStatus, ReviewableQuestion, SchoolClass } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 type TabKey = 'overview' | 'coins' | 'safety' | 'analytics';
@@ -139,11 +140,30 @@ export default function TeacherOverview() {
         id: g.id,
         name: g.name,
         coins: g.totalCoins,
+        classId: g.classId,
         memberCount: users.filter((u) => u.groupId === g.id).length,
       }))
-      .filter((g) => g.memberCount > 0)
-      .sort((a, b) => b.coins - a.coins);
+      .filter((g) => g.memberCount > 0);
   }, [groups, users]);
+
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  useEffect(() => {
+    classesApi.list().then(setClasses).catch(() => {});
+  }, []);
+  const classesById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes]);
+
+  // 每个班级一个柱状图，组内按能量币降序，实现"不同班级分开放"
+  const barByClass = useMemo(() => {
+    const map: Record<string, { classId: string; className: string; groups: typeof barData }> = {};
+    for (const g of barData) {
+      const cid = g.classId || 'unknown';
+      if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, groups: [] };
+      map[cid].groups.push(g);
+    }
+    return Object.values(map)
+      .map((c) => ({ ...c, groups: [...c.groups].sort((a, b) => b.coins - a.coins) }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [barData, classesById]);
 
   // 项目状态分布：按真实项目状态计数（仅展示数量 > 0 的状态）
   const pieData = useMemo(
@@ -331,47 +351,60 @@ export default function TeacherOverview() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="flex items-center gap-2 text-[16px] font-bold text-ink-800">
                     <BarChart3 size={18} className="text-mission-500" />
-                    {barData.length} 小组能量币对比
+                    {barData.length} 个小组能量币 · 按班级对比
                   </h3>
                   <span className="chip-mission !py-0.5 !px-2 !text-[10px]">单位 ⚡</span>
                 </div>
-                <div className="h-[220px] -mx-3">
-                  {barData.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center gap-2 text-ink-400">
+                <div className="space-y-5">
+                  {barByClass.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center gap-2 text-ink-400 py-10">
                       <BarChart3 size={30} className="opacity-40" />
                       <p className="text-[13px] font-bold">暂无已成组小组</p>
                       <p className="text-[11px]">学生加入小组后，将在此展示真实能量币对比</p>
                     </div>
                   ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barData} margin={{ top: 6, right: 12, left: -10, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#4F7CFF" />
-                            <stop offset="50%" stopColor="#6D91FF" />
-                            <stop offset="100%" stopColor="#FF8A34" />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} tickLine={false} axisLine={false} interval={0} tickFormatter={(v: string) => (v.length > 6 ? `${v.slice(0, 6)}…` : v)} />
-                        <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: 12,
-                            fontSize: 12,
-                            border: '1px solid rgba(255,255,255,0.9)',
-                            background: 'rgba(255,255,255,0.96)',
-                            backdropFilter: 'blur(12px)',
-                            boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
-                          }}
-                          formatter={(v: any, _name: any, item: any) => [
-                            `${Number(v).toLocaleString()} ⚡（${item?.payload?.memberCount ?? 0} 名组员）`,
-                            '能量币',
-                          ]}
-                        />
-                        <Bar dataKey="coins" fill="url(#barGrad)" radius={[8, 8, 0, 0]} barSize={36} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    barByClass.map((cls) => (
+                      <div key={cls.classId}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[13px] font-bold text-ink-800 flex items-center gap-1.5">
+                            <BarChart3 size={14} className="text-mission-500" />
+                            {cls.className}
+                          </span>
+                          <span className="text-[11px] text-ink-400">{cls.groups.length} 个小组 · 按能量币排序</span>
+                        </div>
+                        <div className="h-[180px] -mx-3">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={cls.groups} margin={{ top: 6, right: 12, left: -10, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id={`barGrad-${cls.classId}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#4F7CFF" />
+                                  <stop offset="50%" stopColor="#6D91FF" />
+                                  <stop offset="100%" stopColor="#FF8A34" />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} tickLine={false} axisLine={false} interval={0} tickFormatter={(v: string) => (v.length > 6 ? `${v.slice(0, 6)}…` : v)} />
+                              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                              <Tooltip
+                                contentStyle={{
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  border: '1px solid rgba(255,255,255,0.9)',
+                                  background: 'rgba(255,255,255,0.96)',
+                                  backdropFilter: 'blur(12px)',
+                                  boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
+                                }}
+                                formatter={(v: any, _name: any, item: any) => [
+                                  `${Number(v).toLocaleString()} ⚡（${item?.payload?.memberCount ?? 0} 名组员）`,
+                                  '能量币',
+                                ]}
+                              />
+                              <Bar dataKey="coins" fill={`url(#barGrad-${cls.classId})`} radius={[8, 8, 0, 0]} barSize={Math.min(36, 80 / Math.max(1, cls.groups.length))} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
