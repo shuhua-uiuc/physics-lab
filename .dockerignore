@@ -1,0 +1,28 @@
+# 前端构建上下文（web.Dockerfile）需要尽量小的体积
+
+node_modules
+dist
+.vite
+
+# 后端与文档不属于前端构建产物
+backend
+docs
+*.md
+
+# git / 提交物
+.git
+.gitignore
+
+# 本地环境与密钥
+.env
+.env.*
+!.env.example
+*.db
+.venv
+__pycache__
+
+# 脚本与部署配置（前端构建不需要；nginx.conf 例外——运行阶段要 COPY 它）
+scripts
+docker-compose.yml
+web.Dockerfile
+.claude

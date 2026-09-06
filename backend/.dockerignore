@@ -1,0 +1,14 @@
+# 本地 venv / 缓存
+.venv/
+__pycache__/
+*.py[cod]
+
+# 本地 SQLite 数据库（用卷持久化，不打进镜像）
+*.db
+
+# 测试 / 文档
+tests/
+*.egg-info/
+
+# 密钥（容器运行时由 env 注入）
+.env
