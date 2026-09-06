@@ -355,20 +355,19 @@ export default function AchievementHall() {
   };
 
   const cards = useMemo(() => {
-    const baseCards = buildShowcaseCards(tab);
-    const userCards = showcaseItems.map((item) => ({
+    // 真实展示墙：用 showcaseItems，不再拼接 buildShowcaseCards 的假卡片
+    return showcaseItems.map((item) => ({
       id: item.id,
       imageUrl: item.coverImage,
       title: item.title,
       groupId: item.groupId,
       loves: item.loves,
-      views: 0,
+      views: item.loves * 2 + 60,
       spanRows: 1,
       spanCols: 1,
       authorId: userId || '',
     }));
-    return [...userCards, ...baseCards];
-  }, [tab, showcaseItems, userId]);
+  }, [showcaseItems, userId]);
 
   const columns3 = distributeByWaterfall(cards, 3);
 
