@@ -197,6 +197,8 @@ function LegacyToastBridge() {
 
 export default function App() {
   const initAuth = useAuthStore((s) => s.init);
+  const role = useAuthStore((s) => s.role);
+  const userId = useAuthStore((s) => s.userId);
 
   useEffect(() => {
     initMockData();
@@ -207,6 +209,16 @@ export default function App() {
       bootstrapFromApi();
     }
   }, [initAuth]);
+
+  // 欢迎通知只在登录后按角色展示；未登录/登出时清空，避免在登录页对所有访客可见。
+  useEffect(() => {
+    const ui = useUIStore.getState();
+    if (!userId || !role) {
+      ui.clearToasts();
+      return;
+    }
+    ui.setWelcomeToasts(role);
+  }, [userId, role]);
 
   return (
     <Router>

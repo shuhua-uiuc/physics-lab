@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
@@ -25,8 +24,9 @@ const TEACHER_WELCOME_TOASTS: Toast[] = [
 ];
 
 const initialToasts = (): Toast[] => {
-  const role = useAuthStore.getState().role;
-  return role === 'teacher' || role === 'admin' ? TEACHER_WELCOME_TOASTS : STUDENT_WELCOME_TOASTS;
+  // 不再在 store 初始化时预置欢迎通知：登录前 role 为空，会导致未登录也能看到通知，
+  // 且角色不匹配。改为登录成功后由 App 按当前角色注入（见 App.tsx 的 setWelcomeToasts）。
+  return [];
 };
 
 interface UIState {
@@ -36,6 +36,8 @@ interface UIState {
   pushToast: (msg: string, type?: ToastType) => void;
   removeToast: (id: string) => void;
   clearToasts: () => void;
+  /** 登录后按角色注入欢迎通知（仅对已登录用户展示）。 */
+  setWelcomeToasts: (role: string | null) => void;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -62,5 +64,11 @@ export const useUIStore = create<UIState>((set) => ({
 
   clearToasts: () => {
     set({ toasts: [] });
+  },
+
+  setWelcomeToasts: (role) => {
+    const list =
+      role === 'teacher' || role === 'admin' ? TEACHER_WELCOME_TOASTS : STUDENT_WELCOME_TOASTS;
+    set({ toasts: list });
   },
 }));
