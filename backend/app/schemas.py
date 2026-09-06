@@ -232,6 +232,23 @@ class ProjectCreate(BaseModel):
     rewardCoins: int | None = 200
 
 
+class ProjectUpdate(BaseModel):
+    """项目信息更新（技术要点/难点、标题、课题、器材、截止日期、成果、照片、奖励币）。
+
+    所有字段可选，仅更新传入的字段；与 ProjectCreate 一样直接使用 camelCase 键。
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    topic: str | None = Field(default=None, max_length=100)
+    techPoints: str | None = None
+    difficulties: str | None = None
+    equipmentList: list[EquipmentItem] | None = None
+    dueDate: datetime | None = None
+    results: str | None = None
+    photos: list[str] | None = None
+    rewardCoins: int | None = Field(default=None, ge=0)
+
+
 class ProjectStatusUpdate(BaseModel):
     status: str
 

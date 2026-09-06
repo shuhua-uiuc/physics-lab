@@ -42,6 +42,7 @@ interface ProjectState {
   recruitments: Recruitment[];
   showcaseItems: ShowcaseItem[];
   createProject: (partial: PartialProject) => Project;
+  updateProject: (id: string, patch: Partial<Project>) => void;
   updateStatus: (id: string, status: ProjectStatus) => void;
   setProgress: (id: string, progressVal: number) => void;
   markProjectDone: (id: string) => void;
@@ -168,6 +169,22 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({ projects: reviveProjectDates(fresh) });
       }, 'projects.create');
       return project;
+    },
+
+    updateProject: (id, patch) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = projects.map((p) => (p.id === id ? { ...p, ...patch } : p));
+      persist(next, recruitments, showcaseItems);
+      set({ projects: next });
+      // 日期字段需序列化为 ISO 字符串后再发送给后端。
+      syncToApi(() => {
+        const body: Record<string, unknown> = { ...patch };
+        if (patch.dueDate !== undefined) {
+          const d = patch.dueDate;
+          body.dueDate = (d instanceof Date ? d : new Date(d)).toISOString();
+        }
+        return projectsApi.update(id, body as Partial<Project>);
+      }, 'projects.update');
     },
 
     updateStatus: (id, status) => {

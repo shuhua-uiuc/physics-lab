@@ -69,6 +69,7 @@ export default function ProjectDetail() {
   const getRecruitmentsByProject = useProjectStore((s) => s.getRecruitmentsByProject);
   const createRecruitment = useProjectStore((s) => s.createRecruitment);
   const markProjectDone = useProjectStore((s) => s.markProjectDone);
+  const updateProject = useProjectStore((s) => s.updateProject);
   const userId = useAuthStore((s) => s.userId);
   const groupId = useAuthStore((s) => s.groupId);
   const pushToast = useUIStore((s) => s.pushToast);
@@ -113,12 +114,7 @@ export default function ProjectDetail() {
   };
 
   const saveTech = () => {
-    const { updateStatus, setProgress, projects } = useProjectStore.getState();
-    const idx = projects.findIndex((p) => p.id === project.id);
-    if (idx >= 0) {
-      projects[idx] = { ...projects[idx], techPoints: techDraft, difficulties: diffDraft };
-      useProjectStore.setState({ projects: [...projects] });
-    }
+    updateProject(project.id, { techPoints: techDraft, difficulties: diffDraft });
     setEditingTech(false);
     pushToast('技术要点已更新', 'success');
   };

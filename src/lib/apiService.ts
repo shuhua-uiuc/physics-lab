@@ -113,6 +113,8 @@ export const projectsApi = {
   get: (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (payload: Partial<Project> & { title: string; topic: string }) =>
     api.post<Project>('/api/projects', payload),
+  update: (id: string, payload: Partial<Project>) =>
+    api.put<Project>(`/api/projects/${id}`, payload),
   updateStatus: (id: string, status: string) =>
     api.put<Project>(`/api/projects/${id}/status`, { status }),
   updateProgress: (id: string, progress: number) =>

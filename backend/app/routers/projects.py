@@ -14,6 +14,7 @@ from ..schemas import (
     ProjectOut,
     ProjectProgressUpdate,
     ProjectStatusUpdate,
+    ProjectUpdate,
     RecruitmentCreate,
     RecruitmentOut,
     ResolveRequest,
@@ -89,6 +90,49 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db), curren
     db.commit()
     db.refresh(project)
     return project
+
+
+@router.put("/projects/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: str,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """更新项目信息（技术要点/难点、课题、器材清单、成果等）。
+
+    权限：教师/管理员可编辑任意项目；学生仅可编辑本小组项目。
+    """
+    p = db.get(Project, project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != p.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能编辑本小组的项目")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data and data["title"] is not None:
+        p.title = data["title"]
+    if "topic" in data and data["topic"] is not None:
+        p.topic = data["topic"]
+    if "techPoints" in data:
+        p.tech_points = data["techPoints"] or ""
+    if "difficulties" in data:
+        p.difficulties = data["difficulties"] or ""
+    if "equipmentList" in data and data["equipmentList"] is not None:
+        p.equipment_list = data["equipmentList"]
+        p.safety_category = _infer_safety_category(data["equipmentList"])
+    if "dueDate" in data and data["dueDate"] is not None:
+        p.due_date = data["dueDate"]
+    if "results" in data:
+        p.results = data["results"] or ""
+    if "photos" in data and data["photos"] is not None:
+        p.photos = data["photos"]
+    if "rewardCoins" in data and data["rewardCoins"] is not None:
+        p.reward_coins = data["rewardCoins"]
+
+    db.commit()
+    db.refresh(p)
+    return p
 
 
 @router.put("/projects/{project_id}/status", response_model=ProjectOut)
