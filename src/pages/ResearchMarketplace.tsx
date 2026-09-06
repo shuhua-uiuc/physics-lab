@@ -41,58 +41,6 @@ interface BidState {
   progress: number;
 }
 
-const MY_BIDS: Array<{
-  recId: string;
-  projectName: string;
-  role: string;
-  reward: number;
-} & BidState> = [
-  {
-    recId: 'r-03',
-    projectName: '驻波共振演示装置',
-    role: '实验操作员',
-    reward: 120,
-    status: 'done',
-    result: 'success',
-    pay: 120,
-    progress: 100,
-  },
-  {
-    recId: 'r-05',
-    projectName: '黑体辐射实验结题报告',
-    role: '文档专员',
-    reward: 160,
-    status: 'won',
-    progress: 62,
-  },
-  {
-    recId: 'r-07',
-    projectName: '光纤通信模拟链路',
-    role: '硬件工程师',
-    reward: 210,
-    status: 'bidding',
-    progress: 0,
-  },
-];
-
-const MY_POSTED = [
-  {
-    id: 'p-01',
-    title: '简易电动机 - 招募机械调试助手',
-    bids: 4,
-    deadline: daysFromNow(2),
-    reward: 150,
-    status: 'open',
-  },
-  {
-    id: 'p-02',
-    title: '单摆测 g - 数据分析兼职',
-    bids: 7,
-    deadline: daysFromNow(5),
-    reward: 90,
-    status: 'open',
-  },
-];
 
 function formatDeadline(ts: number) {
   const diff = ts - Date.now();
@@ -136,6 +84,39 @@ export default function ResearchMarketplace() {
   const [search, setSearch] = useState('');
   const [activeSkills, setActiveSkills] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>('reward');
+
+  // 我的发布 = 本组项目发布的招募
+  const myPosted = useMemo(
+    () =>
+      recruitments
+        .filter((r) => projects.find((p) => p.id === r.projectId)?.ownerGroupId === currentGroupId)
+        .map((r) => ({ id: r.id, title: r.title, bids: r.bids?.length || 0, deadline: new Date(r.deadline instanceof Date ? r.deadline : r.deadline).getTime(), reward: r.reward, status: r.status })),
+    [recruitments, projects, currentGroupId]
+  );
+
+  // 我的投标 = 我投过的招募
+  const myBids = useMemo(
+    () =>
+      recruitments
+        .filter((r) => r.bids?.some((b) => b.userId === userId))
+        .map((r) => {
+          const myBid = r.bids?.find((b) => b.userId === userId);
+          const project = projects.find((p) => p.id === r.projectId);
+          const status = r.status === 'done' ? 'done' : r.status === 'assigned' && r.assigneeUserId === userId ? ('won' as const) : ('bidding' as const);
+          const progress = r.status === 'done' ? 100 : r.status === 'assigned' ? 60 : 10;
+          return {
+            recId: r.id,
+            projectName: project?.title || '',
+            role: myBid?.skillDesc || '投标',
+            reward: r.reward,
+            status,
+            progress,
+            result: r.result,
+            pay: r.actualPay,
+          };
+        }),
+    [recruitments, projects, userId]
+  );
 
   // 项目 ID → 所属小组 ID 映射
   const projectGroupMap = useMemo(() => {
@@ -392,7 +373,7 @@ export default function ResearchMarketplace() {
                 </div>
               </div>
               <div className="space-y-3">
-                {MY_BIDS.map((b) => {
+                {myBids.map((b) => {
                   const statusCfg: Record<BidState['status'], { label: string; chip: string; icon: any }> = {
                     bidding: { label: '竞标中', chip: 'chip-mission', icon: TrendingUp },
                     won: { label: '已中标', chip: 'chip-growth', icon: CheckCircle2 },
@@ -475,7 +456,7 @@ export default function ResearchMarketplace() {
                 </div>
               </div>
               <div className="space-y-3">
-                {MY_POSTED.map((p) => {
+                {myPosted.map((p) => {
                   const urgent = deadlineIsUrgent(p.deadline);
                   return (
                     <div
