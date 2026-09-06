@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -71,12 +71,38 @@ export default function LearningHub() {
 
   const navigate = useNavigate();
   const pushToast = useUIStore((s) => s.pushToast);
+  const { quizSessions } = useTheoryStore();
+
+  // 完成/解锁：从真实测验派生（某主题有通过记录即完成；主题按顺序解锁）
+  const completedTopicIds = useMemo(() => new Set(quizSessions.filter((s) => s.passed).map((s) => s.topicId)), [quizSessions]);
+  const topicMeta = useMemo(
+    () =>
+      TOPIC_META.map((t, i) => {
+        const completed = completedTopicIds.has(t.id);
+        const prevDone = i === 0 || TOPIC_META.slice(0, i).every((pt) => completedTopicIds.has(pt.id));
+        return { ...t, completed, unlocked: prevDone };
+      }),
+    [completedTopicIds]
+  );
+  const quizHistory = useMemo(
+    () =>
+      quizSessions
+        .slice()
+        .reverse()
+        .slice(0, 4)
+        .map((s, i) => {
+          const d = s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt);
+          return { id: i, date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`, accuracy: s.score, passed: s.passed, reward: 0 };
+        }),
+    [quizSessions]
+  );
+  const avgAccuracy = quizSessions.length > 0 ? Math.round(quizSessions.reduce((sum, s) => sum + s.score, 0) / quizSessions.length) : 0;
 
   const activeTopicData = mockTopics.find((t) => t.id === activeTopicId) || mockTopics[0];
-  const activeMeta = TOPIC_META.find((t) => t.id === activeTopicId) || TOPIC_META[0];
-  const unlockedCount = TOPIC_META.filter((t) => t.unlocked).length;
-  const completedCount = TOPIC_META.filter((t) => t.completed).length;
-  const totalProgress = Math.round((completedCount / TOPIC_META.length) * 100);
+  const activeMeta = topicMeta.find((t) => t.id === activeTopicId) || topicMeta[0];
+  const unlockedCount = topicMeta.filter((t) => t.unlocked).length;
+  const completedCount = topicMeta.filter((t) => t.completed).length;
+  const totalProgress = Math.round((completedCount / topicMeta.length) * 100);
 
   return (
     <div className="w-full space-y-6">
@@ -158,7 +184,7 @@ export default function LearningHub() {
             <Atom size={12} />
             物理主题导航
           </div>
-          {TOPIC_META.map((meta, idx) => {
+          {topicMeta.map((meta, idx) => {
             const Icon = meta.icon;
             const isActive = activeTopicId === meta.id;
             return (
@@ -455,7 +481,7 @@ export default function LearningHub() {
                     </div>
                     <div className="glass-card !py-3 !px-5 rounded-xl flex items-center gap-2">
                       <Target size={16} className="text-growth-500" />
-                      <span className="text-sm font-bold text-ink-700">通过率 82%</span>
+                      <span className="text-sm font-bold text-ink-700">通过率 {avgAccuracy}%</span>
                     </div>
                   </div>
                 </div>
@@ -466,7 +492,7 @@ export default function LearningHub() {
                   <Trophy size={12} />
                   最近测验成绩
                 </div>
-                {QUIZ_HISTORY.map((record, idx) => (
+                {quizHistory.map((record, idx) => (
                   <motion.div
                     key={record.id}
                     initial={{ opacity: 0, x: 20 }}

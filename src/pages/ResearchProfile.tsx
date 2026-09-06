@@ -37,6 +37,8 @@ import MissionShell from '@/components/layout/MissionShell';
 import Checkbox from '@/components/ui/Checkbox';
 import { useGroupStore } from '@/store/groupStore';
 import { useAuthStore } from '@/store/authStore';
+import { useProjectStore } from '@/store/projectStore';
+import { useTheoryStore } from '@/store/theoryStore';
 import { useUIStore } from '@/store/uiStore';
 import { authApi } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
@@ -135,6 +137,12 @@ export default function ResearchProfile() {
   const authUserId = useAuthStore((s) => s.userId);
   const me = users.find((u) => u.id === authUserId) || users[0];
   const myGroup = groups.find((g) => g.id === me.groupId);
+  const { projects, recruitments } = useProjectStore();
+  const { challenges } = useTheoryStore();
+  const doneProjects = projects.filter((p) => p.ownerGroupId === me.groupId && p.status === 'done').length;
+  const createdChallenges = challenges.filter((c) => c.creatorGroupId === me.groupId).length;
+  const recruitHelps = recruitments.filter((r) => r.assigneeUserId === me.id && r.status === 'done').length;
+  const personalCoins = me.personalCoins || 0;
   const timeline = useMemo(() => buildTimeline(), []);
   const [goals, setGoals] = useState<Record<string, boolean>>(
     Object.fromEntries(SEMESTER_GOALS.map((g) => [g.id, g.checked]))
@@ -240,10 +248,10 @@ export default function ResearchProfile() {
                     )}
                   </div>
                   <h1 className="text-[28px] md:text-[32px] font-extrabold text-ink-900 leading-[1.1] tracking-tight">
-                    {me.name || '杨静'}
+                    {me.name || '研究员'}
                     <span className="block text-[14px] md:text-[15px] font-semibold text-ink-500 mt-1 flex items-center gap-1.5">
                       <Flag size={14} className="text-mission-500" />
-                      {myGroup?.name || '牛顿先锋队'}
+                      {myGroup?.name || '未分组'}
                       <span className="text-ink-300 mx-1">·</span>
                       <span className="italic text-gradient-mission font-serif">「大胆假设，小心求证」</span>
                     </span>
@@ -253,10 +261,10 @@ export default function ResearchProfile() {
 
               <div className="col-span-12 md:col-span-5 grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: '总能量', val: 2380, unit: '⚡', grad: 'from-energy-400 to-alert-500', icon: Zap },
-                  { label: '完成课题', val: 8, unit: '项', grad: 'from-growth-400 to-growth-600', icon: Target },
-                  { label: '发起挑战', val: 12, unit: '场', grad: 'from-nova-400 to-nova-600', icon: Swords },
-                  { label: '招募帮助', val: 6, unit: '次', grad: 'from-mission-400 to-mission-600', icon: Users },
+                  { label: '总能量', val: personalCoins, unit: '⚡', grad: 'from-energy-400 to-alert-500', icon: Zap },
+                  { label: '完成课题', val: doneProjects, unit: '项', grad: 'from-growth-400 to-growth-600', icon: Target },
+                  { label: '发起挑战', val: createdChallenges, unit: '场', grad: 'from-nova-400 to-nova-600', icon: Swords },
+                  { label: '招募帮助', val: recruitHelps, unit: '次', grad: 'from-mission-400 to-mission-600', icon: Users },
                 ].map((s, i) => {
                   const Icon = s.icon;
                   return (
