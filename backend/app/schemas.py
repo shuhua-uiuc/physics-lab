@@ -31,6 +31,13 @@ class RegisterRequest(BaseModel):
     classId: str
 
 
+class ChangePassword(BaseModel):
+    """用户修改本人密码（需校验原密码）。"""
+
+    oldPassword: str
+    newPassword: str = Field(min_length=6, max_length=64)
+
+
 class TokenResponse(CamelModel):
     access_token: str
     token_type: str = "bearer"

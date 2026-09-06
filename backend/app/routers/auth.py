@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Class, User
-from ..schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
+from ..schemas import ChangePassword, LoginRequest, RegisterRequest, TokenResponse, UserOut
 from ..security import create_access_token, hash_password, verify_password
 from ..services import gen_id
 
@@ -76,6 +76,20 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     db.commit()
     db.refresh(user)
     return _issue_token(user)
+
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePassword,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """用户修改本人密码：校验原密码后设置新密码。"""
+    if not verify_password(payload.oldPassword, current.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="原密码错误")
+    current.password_hash = hash_password(payload.newPassword)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/token", response_model=TokenResponse, include_in_schema=False)

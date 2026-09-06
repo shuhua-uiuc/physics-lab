@@ -69,3 +69,36 @@ def test_register_short_password_rejected(client):
         },
     )
     assert resp.status_code == 422
+
+
+def test_change_password_success(client, auth):
+    headers = auth("u-1")  # 初始密码 student123
+    resp = client.post(
+        "/api/auth/change-password",
+        json={"oldPassword": "student123", "newPassword": "newpass123"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    # 用新密码登录成功
+    login = client.post("/api/auth/login", json={"username": "u-1", "password": "newpass123"})
+    assert login.status_code == 200
+    # 旧密码失效
+    old_login = client.post("/api/auth/login", json={"username": "u-1", "password": "student123"})
+    assert old_login.status_code == 401
+
+
+def test_change_password_wrong_old(client, auth):
+    resp = client.post(
+        "/api/auth/change-password",
+        json={"oldPassword": "wrongpass", "newPassword": "newpass123"},
+        headers=auth("u-1"),
+    )
+    assert resp.status_code == 400
+
+
+def test_change_password_requires_auth(client):
+    resp = client.post(
+        "/api/auth/change-password",
+        json={"oldPassword": "student123", "newPassword": "newpass123"},
+    )
+    assert resp.status_code == 401

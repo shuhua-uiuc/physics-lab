@@ -19,6 +19,12 @@ import type {
   ClassMeta,
 } from '../data/mockData';
 
+// ---------- Auth (self-service) ----------
+export const authApi = {
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.post<{ ok: boolean }>('/api/auth/change-password', { oldPassword, newPassword }),
+};
+
 // ---------- Classes ----------
 export const classesApi = {
   list: () => api.get<SchoolClass[]>('/api/classes'),
