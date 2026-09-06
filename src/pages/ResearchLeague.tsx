@@ -26,7 +26,8 @@ import {
 import MissionShell from '@/components/layout/MissionShell';
 import AvatarStack from '@/components/ui/AvatarStack';
 import { useGroupStore } from '@/store/groupStore';
-import { User } from '@/data/mockData';
+import { classesApi } from '@/lib/apiService';
+import { User, SchoolClass } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 type TabKey = 'total' | 'month' | 'week' | 'personal';
@@ -82,47 +83,31 @@ function buildSeasonTrend() {
 
 const GROUP_NAMES6 = ['牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'];
 
-interface LeaderEntry {
-  rank: number;
-  groupId: string;
-  name: string;
-  level: number;
-  coins: number;
-  projects: number;
-  delta: number;
-}
-
-function buildLeaderboard(users: User[], groups: any[]): LeaderEntry[] {
-  const baseCoins = [6820, 6410, 5860, 5320, 4980, 4710, 4380, 4120, 3950, 3720];
-  const baseProjects = [8, 7, 6, 6, 5, 5, 4, 4, 4, 3];
-  const deltas = [+12, +8, +5, +2, 0, -1, -3, +1, 0, -2];
-  const entries: LeaderEntry[] = [];
-  for (let i = 0; i < 10; i++) {
-    const gi = i % Math.max(groups.length, 1);
-    const group = groups[gi];
-    if (!group) continue;
-    entries.push({
-      rank: i + 1,
-      groupId: group.id,
-      name: GROUP_NAMES6[gi] + (i >= 6 ? ` · 分队` : ''),
-      level: 10 - i,
-      coins: baseCoins[i],
-      projects: baseProjects[i],
-      delta: deltas[i],
-    });
-  }
-  return entries;
-}
-
 export default function ResearchLeague() {
   const { groups, users } = useGroupStore();
   const [tab, setTab] = useState<TabKey>('total');
   const trendData = useMemo(() => buildSeasonTrend(), []);
-  const leaderboard = useMemo(() => buildLeaderboard(users, groups), [users, groups]);
 
-  const top3 = leaderboard.slice(0, 3);
-  const rest = leaderboard.slice(3);
-  const maxCoins = leaderboard[0]?.coins ?? 1;
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  useEffect(() => {
+    classesApi.list().then(setClasses).catch(() => {});
+  }, []);
+  const classesById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes]);
+
+  // 真实小组能量榜：按班级分组，组内按能量币降序
+  const rankingByClass = useMemo(() => {
+    const map: Record<string, { classId: string; className: string; rows: { groupId: string; name: string; coins: number; memberCount: number }[] }> = {};
+    for (const g of groups) {
+      const memberCount = users.filter((u) => u.groupId === g.id).length;
+      if (memberCount === 0) continue;
+      const cid = g.classId || 'unknown';
+      if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, rows: [] };
+      map[cid].rows.push({ groupId: g.id, name: g.name, coins: g.totalCoins, memberCount });
+    }
+    return Object.values(map)
+      .map((c) => ({ ...c, rows: [...c.rows].sort((a, b) => b.coins - a.coins) }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [groups, users, classesById]);
 
   return (
     <MissionShell>
@@ -178,231 +163,69 @@ export default function ResearchLeague() {
 
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-8 space-y-6">
-            <motion.section
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.08 }}
-              className="glass-card p-6 md:p-8 rounded-[28px] relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-grid-fine opacity-40 pointer-events-none" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="flex items-center gap-2 text-[18px] font-bold text-ink-800">
-                    <Trophy size={22} className="text-alert-500" />
-                    TOP 3 · 领奖台
-                  </h2>
-                  <span className="chip-nova">Season Finalist</span>
-                </div>
-
-                <div className="flex items-end justify-center gap-4 md:gap-8 pt-10">
-                  {[1, 0, 2].map((orderIdx, displayIdx) => {
-                    const entry = top3[orderIdx];
-                    if (!entry) return null;
-                    const gi = orderIdx;
-                    const podiumClass =
-                      orderIdx === 0
-                        ? 'podium-gold'
-                        : orderIdx === 1
-                          ? 'podium-silver'
-                          : 'podium-bronze';
-                    const heights = ['h-56 md:h-64', 'h-44 md:h-52', 'h-36 md:h-44'];
-                    const members = users.filter((u) => u.groupId === entry.groupId).slice(0, 5);
-                    const medals = [
-                      { icon: Crown, size: 32 },
-                      { icon: Medal, size: 26 },
-                      { icon: Award, size: 24 },
-                    ];
-                    const MedalIcon = medals[orderIdx].icon;
-                    return (
-                      <motion.div
-                        key={entry.groupId + orderIdx}
-                        initial={{ opacity: 0, y: 40 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.15 + displayIdx * 0.1, type: 'spring' }}
-                        className="flex flex-col items-center flex-1 max-w-[220px] relative"
-                      >
-                        {orderIdx === 0 && (
-                          <>
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-6 pointer-events-none">
-                              <motion.div
-                                animate={{ opacity: [0.4, 1, 0.4], scale: [0.9, 1.1, 0.9] }}
-                                transition={{ duration: 2.2, repeat: Infinity }}
-                                className="w-3 h-3 rounded-full bg-mission-400 shadow-[0_0_12px_rgba(79,124,255,0.8)]"
-                              />
-                              <motion.div
-                                animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                                transition={{ duration: 1.8, repeat: Infinity, delay: 0.3 }}
-                                className="w-2.5 h-2.5 rounded-full bg-nova-400 shadow-[0_0_10px_rgba(139,92,246,0.8)]"
-                              />
-                            </div>
-                            <div className="absolute -top-14 -left-4 w-6 h-6 md:-left-6">
-                              <Sparkles size={24} className="text-alert-400 animate-floatY drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                            </div>
-                            <div className="absolute -top-12 -right-4 w-6 h-6 md:-right-6">
-                              <Sparkles size={22} className="text-energy-400 animate-floatY drop-shadow-[0_0_8px_rgba(255,138,52,0.6)]" style={{ animationDelay: '0.8s' }} />
-                            </div>
-                          </>
-                        )}
-
-                        <div
-                          className={cn(
-                            'w-14 h-14 md:w-16 md:h-16 rounded-2xl shadow-lg flex items-center justify-center relative mb-2',
-                            orderIdx === 0
-                              ? 'bg-gradient-to-br from-alert-400 to-energy-500 text-white scale-110'
-                              : orderIdx === 1
-                                ? 'bg-gradient-to-br from-ink-300 to-ink-500 text-white'
-                                : 'bg-gradient-to-br from-orange-400 to-orange-600 text-white'
-                          )}
-                        >
-                          <MedalIcon size={medals[orderIdx].size} strokeWidth={2.4} />
-                          {orderIdx === 0 && (
-                            <>
-                              <div className="absolute -inset-2 rounded-2xl bg-alert-400/20 blur-lg -z-10 animate-pulse" />
-                              <div className="absolute -top-5 left-1/2 -translate-x-1/2">
-                                <div className="text-alert-500 animate-floatY">
-                                  <Crown size={28} className="drop-shadow-[0_2px_8px_rgba(245,158,11,0.5)]" />
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        <AvatarStack users={members} max={5} size={28} className="mb-2" />
-                        <div className="font-bold text-[13px] md:text-[14px] text-ink-800 text-center leading-tight mb-1">
-                          {entry.name}
-                        </div>
-                        <span className="chip-mission !py-0.5 !px-2 mb-2 text-[10px]">
-                          LV {entry.level}
-                        </span>
-                        <div className="flex items-center gap-1 mb-1">
-                          <Zap size={14} className="text-energy-500 fill-energy-400/40" />
-                          <CoinsTicker target={entry.coins} />
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-ink-500 mb-3">
-                          <Target size={11} />
-                          完成项目 <span className="font-bold text-ink-700 tabular-nums"><ProjectsTicker target={entry.projects} /></span>
-                        </div>
-
-                        <div className={cn('w-full rounded-t-2xl relative overflow-hidden', podiumClass, heights[orderIdx])}>
-                          <div className="absolute inset-0 bg-gradient-to-t from-transparent via-white/10 to-white/30" />
-                          <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/40 to-transparent" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="text-[48px] md:text-[56px] font-black text-white/80 tracking-tighter tabular-nums drop-shadow-lg">
-                              #{entry.rank}
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.section>
-
-            <motion.section
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="glass-card p-5 md:p-6 rounded-[24px]"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="flex items-center gap-2 text-[16px] font-bold text-ink-800">
-                  <Target size={18} className="text-mission-500" />
-                  名次 4 ~ 10
-                </h3>
-                <span className="text-[11px] text-ink-400 font-mono">RANK 04 → 10</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider">
-                      <th className="text-left py-3 px-3 font-medium">名次</th>
-                      <th className="text-left py-3 px-3 font-medium">小组</th>
-                      <th className="text-left py-3 px-3 font-medium">等级</th>
-                      <th className="text-left py-3 px-3 font-medium">能量 ⚡</th>
-                      <th className="text-left py-3 px-3 font-medium">完成</th>
-                      <th className="text-right py-3 px-3 font-medium">环比</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rest.map((e, i) => {
-                      const members = users.filter((u) => u.groupId === e.groupId).slice(0, 3);
-                      const gi = i % 6;
-                      const c = GROUP_COLORS[gi];
-                      const pct = Math.round((e.coins / maxCoins) * 100);
-                      const arrow =
-                        e.delta > 0 ? (
-                          <TrendingUp size={13} className="text-growth-600" />
-                        ) : e.delta < 0 ? (
-                          <TrendingDown size={13} className="text-danger-600" />
-                        ) : (
-                          <Minus size={13} className="text-ink-400" />
-                        );
-                      const deltaCls =
-                        e.delta > 0 ? 'text-growth-700' : e.delta < 0 ? 'text-danger-700' : 'text-ink-400';
-                      return (
-                        <motion.tr
-                          key={e.rank}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.35, delay: 0.25 + i * 0.05 }}
-                          className="border-t border-ink-100/60 hover:bg-mission-50/30 transition rounded-lg"
-                        >
-                          <td className="py-3 px-3">
-                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-ink-100 to-ink-200 flex items-center justify-center font-black text-ink-600 tabular-nums text-[14px]">
-                              {e.rank}
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-3">
-                              <AvatarStack users={members} max={2} size={24} />
-                              <span className="font-semibold text-ink-800">{e.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span
-                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                              style={{
-                                background: `linear-gradient(135deg, ${c.main}, ${c.light})`,
-                              }}
+            <div className="space-y-5">
+              {rankingByClass.length === 0 ? (
+                <div className="glass-card p-10 text-center text-ink-400 text-[13px]">暂无已成组小组</div>
+              ) : (
+                rankingByClass.map((cls) => (
+                  <motion.section
+                    key={cls.classId}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    className="glass-card p-5 md:p-6 rounded-[24px]"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="flex items-center gap-2 text-[16px] font-bold text-ink-800">
+                        <Trophy size={18} className="text-alert-500" />
+                        {cls.className}
+                      </h3>
+                      <span className="text-[11px] text-ink-400">{cls.rows.length} 个小组 · 按能量币排序</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[13px]">
+                        <thead>
+                          <tr className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider">
+                            <th className="text-left py-3 px-2 font-medium">名次</th>
+                            <th className="text-left py-3 px-2 font-medium">小组</th>
+                            <th className="text-left py-3 px-2 font-medium">组员</th>
+                            <th className="text-right py-3 px-2 font-medium">能量 ⚡</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cls.rows.map((r, i) => (
+                            <motion.tr
+                              key={r.groupId}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.35, delay: 0.15 + i * 0.05 }}
+                              className="border-t border-ink-100/60 hover:bg-mission-50/30 transition rounded-lg"
                             >
-                              LV {e.level}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-3 min-w-[180px]">
-                              <span className="ticker tabular-nums font-bold text-ink-800 w-16">
-                                {e.coins.toLocaleString()}
-                              </span>
-                              <div className="flex-1 h-2 rounded-full bg-ink-100 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full"
-                                  style={{
-                                    width: `${pct}%`,
-                                    background: `linear-gradient(90deg, ${c.main}, ${GROUP_COLORS[(gi + 1) % 6].main})`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="chip-growth !py-0.5 !px-2 text-[11px]">
-                              {e.projects} 项
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className={cn('flex items-center justify-end gap-1 font-bold tabular-nums', deltaCls)}>
-                              {arrow}
-                              {e.delta > 0 ? `+${e.delta}` : e.delta}
-                            </div>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </motion.section>
+                              <td className="py-3 px-2">
+                                <div className={cn(
+                                  'w-8 h-8 rounded-xl flex items-center justify-center font-black tabular-nums text-[14px]',
+                                  i === 0 ? 'bg-gradient-to-br from-alert-400 to-energy-500 text-white' :
+                                  i === 1 ? 'bg-gradient-to-br from-ink-300 to-ink-500 text-white' :
+                                  i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white' :
+                                  'bg-ink-100 text-ink-600'
+                                )}>
+                                  {i + 1}
+                                </div>
+                              </td>
+                              <td className="py-3 px-2 font-semibold text-ink-800">{r.name}</td>
+                              <td className="py-3 px-2 text-ink-500">{r.memberCount} 人</td>
+                              <td className="py-3 px-2 text-right font-bold tabular-nums text-ink-800">
+                                {r.coins.toLocaleString()} ⚡
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </motion.section>
+                ))
+              )}
+            </div>
           </div>
 
           <div className="col-span-12 xl:col-span-4 space-y-6">
