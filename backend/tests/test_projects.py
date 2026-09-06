@@ -102,3 +102,22 @@ def test_update_project_not_found(client, auth):
 def test_update_project_requires_auth(client):
     resp = client.put("/api/projects/proj_x", json={"techPoints": "x"})
     assert resp.status_code == 401
+
+
+def test_student_cannot_settle_other_group_project(client, auth):
+    project = _create_project(client, auth("u-1"))  # 属 g-1
+    resp = client.post(f"/api/projects/{project['id']}/done", headers=auth("u-3"))  # g-2 学生
+    assert resp.status_code == 403
+
+
+def test_project_done_idempotent(client, auth):
+    project = _create_project(client, auth("u-1"))
+    assert client.post(f"/api/projects/{project['id']}/done", headers=auth("u-1")).status_code == 200
+    resp = client.post(f"/api/projects/{project['id']}/done", headers=auth("u-1"))
+    assert resp.status_code == 400
+
+
+def test_student_cannot_update_other_group_status(client, auth):
+    project = _create_project(client, auth("u-1"))
+    resp = client.put(f"/api/projects/{project['id']}/status", json={"status": "failed"}, headers=auth("u-3"))
+    assert resp.status_code == 403

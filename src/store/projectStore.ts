@@ -298,7 +298,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const target = recruitments.find((r) => r.id === recruitmentId);
       if (target) {
         // 本地乐观结算；后端 resolve 端点内部完成正式记账。
-        useCoinStore.getState().settleRecruitment(target, result);
+        const proj = get().projects.find((p) => p.id === target.projectId);
+        useCoinStore.getState().settleRecruitment(target, result, proj?.ownerGroupId);
       }
       const next: Recruitment[] = recruitments.map((r) => {
         if (r.id !== recruitmentId) return r;

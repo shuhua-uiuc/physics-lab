@@ -140,11 +140,13 @@ def update_status(
     project_id: str,
     payload: ProjectStatusUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
 ):
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != p.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能更新本项目")
     p.status = payload.status
     db.commit()
     db.refresh(p)
@@ -156,11 +158,13 @@ def update_progress(
     project_id: str,
     payload: ProjectProgressUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
 ):
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != p.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能更新本项目")
     p.progress = max(0, min(100, payload.progress))
     db.commit()
     db.refresh(p)
@@ -168,10 +172,14 @@ def update_progress(
 
 
 @router.post("/projects/{project_id}/done", response_model=ProjectOut)
-def mark_done(project_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def mark_done(project_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != p.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能结算本项目")
+    if p.status == "done":
+        raise HTTPException(status_code=400, detail="项目已结算，请勿重复操作")
     p.status = "done"
     p.progress = 100
     services.settle_project_done(db, p)
@@ -207,7 +215,12 @@ def list_recruitments(
 
 
 @router.post("/recruitments", response_model=RecruitmentOut)
-def create_recruitment(payload: RecruitmentCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def create_recruitment(payload: RecruitmentCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    project = db.get(Project, payload.projectId)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != project.owner_group_id:
+        raise HTTPException(status_code=403, detail="只能为本小组项目发布招募")
     rec = Recruitment(
         id=services.gen_id("rec_"),
         project_id=payload.projectId,
@@ -243,10 +256,19 @@ def place_bid(rec_id: str, payload: BidCreate, db: Session = Depends(get_db), _:
 
 
 @router.put("/recruitments/{rec_id}/assign", response_model=RecruitmentOut)
-def assign(rec_id: str, payload: AssignRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def assign(rec_id: str, payload: AssignRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     rec = db.get(Recruitment, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="招募不存在")
+    if rec.status != "open":
+        raise HTTPException(status_code=400, detail="仅开放中的招募可分配")
+    project = db.get(Project, rec.project_id)
+    if current.account_role not in ("teacher", "admin") and (
+        project is None or current.group_id != project.owner_group_id
+    ):
+        raise HTTPException(status_code=403, detail="只能分配本项目招募")
+    if payload.userId == current.id and current.account_role == "student":
+        raise HTTPException(status_code=400, detail="不能给自己投标的招募做分配")
     rec.status = "assigned"
     rec.assignee_user_id = payload.userId
     db.commit()
@@ -255,12 +277,19 @@ def assign(rec_id: str, payload: AssignRequest, db: Session = Depends(get_db), _
 
 
 @router.put("/recruitments/{rec_id}/resolve", response_model=RecruitmentOut)
-def resolve(rec_id: str, payload: ResolveRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def resolve(rec_id: str, payload: ResolveRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     rec = db.get(Recruitment, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="招募不存在")
     if payload.result not in ("success", "partial", "fail"):
         raise HTTPException(status_code=400, detail="非法的结算结果")
+    if rec.status in ("done", "failed"):
+        raise HTTPException(status_code=400, detail="该招募已结算，请勿重复操作")
+    project = db.get(Project, rec.project_id)
+    if current.account_role not in ("teacher", "admin") and (
+        project is None or current.group_id != project.owner_group_id
+    ):
+        raise HTTPException(status_code=403, detail="只能结算本项目招募")
     services.settle_recruitment(db, rec, payload.result)
     rec.result = payload.result
     rec.status = "failed" if payload.result == "fail" else "done"

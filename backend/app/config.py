@@ -1,3 +1,4 @@
+import secrets
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,7 +10,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./physics_lab.db"
-    jwt_secret: str = "physics-mission-control-dev-secret-change-me"
+    # 优先取环境变量 JWT_SECRET；未配置则每次启动随机生成（杜绝可伪造的公开默认密钥）。
+    jwt_secret: str = secrets.token_hex(32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 720  # 12 小时
 

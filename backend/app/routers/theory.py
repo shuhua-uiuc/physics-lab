@@ -149,6 +149,11 @@ def list_challenges(db: Session = Depends(get_db), _: User = Depends(get_current
 @router.post("/challenges", response_model=ChallengeOut)
 def create_challenge(payload: ChallengeCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     group_id = _require_group(current)
+    if payload.reward < 0:
+        raise HTTPException(status_code=400, detail="奖励不能为负数")
+    group = db.get(Group, group_id)
+    if group is None or group.total_coins < payload.reward:
+        raise HTTPException(status_code=400, detail="能量币不足，无法创建挑战")
     # 创建挑战预扣能量币
     services.add_tx(
         db,
@@ -199,6 +204,12 @@ def submit_challenge(
     challenge = db.get(Challenge, challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="挑战不存在")
+    if challenge.status != "open":
+        raise HTTPException(status_code=400, detail="挑战已关闭，无法提交")
+    if challenge.creator_group_id == group_id:
+        raise HTTPException(status_code=403, detail="不能作答自己创建的挑战")
+    if any(s.get("groupId") == group_id for s in challenge.submissions):
+        raise HTTPException(status_code=400, detail="本小组已作答过该挑战")
 
     if challenge.question_ids:
         qs = db.query(Question).filter(Question.id.in_(challenge.question_ids)).all()

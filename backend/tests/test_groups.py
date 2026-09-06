@@ -69,3 +69,21 @@ def test_set_leader(client, auth, db):
     db.expire_all()
     roles = {u.id: u.member_role for u in db.query(User).filter(User.group_id == "g-1")}
     assert roles == {"u-1": "member", "u-2": "leader"}
+
+
+def test_set_leader_rejects_non_member(client, auth):
+    # u-4 未入组，不能设为 g-1 组长
+    resp = client.put("/api/groups/g-1/leader/u-4", headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 400
+
+
+def test_delete_group_unassigns_members(client, auth, db):
+    from app.models import User
+
+    resp = client.delete("/api/groups/g-1", headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 200
+    db.expire_all()
+    # 成员账号保留，仅解绑
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(["u-1", "u-2"])).all()}
+    assert users["u-1"].group_id is None
+    assert users["u-2"].group_id is None

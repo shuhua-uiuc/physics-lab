@@ -217,10 +217,10 @@ function TransferHistoryItem({ tx }: { tx: any }) {
 export default function GroupCommunicator() {
   const navigate = useNavigate();
   const { userId, groupId, role } = useAuthStore();
-  const { groups, getGroupById, getGroupUsers, updateGroupCoins } = useGroupStore();
+  const { groups, getGroupById, getGroupUsers } = useGroupStore();
   const { challenges, createChallenge, getTopicQuestions, topics } = useTheoryStore();
   const { recruitments, projects, placeBid, assignRecruitment, resolveRecruitment } = useProjectStore();
-  const { addTx, coinTxs, transferCoins } = useCoinStore();
+  const { coinTxs, transferCoins } = useCoinStore();
   const pushToast = useUIStore((s) => s.pushToast);
   
   const [tab, setTab] = useState<TabKey>('challenges');
@@ -290,15 +290,7 @@ export default function GroupCommunicator() {
     if (challengeForm.questionIds.length !== 10) return pushToast('请选择10道题目', 'warning');
     if (challengeForm.reward <= 0) return pushToast('奖励必须大于0', 'warning');
     if (myCoins < challengeForm.reward) return pushToast('能量币不足', 'warning');
-    
-    updateGroupCoins(groupId, -challengeForm.reward);
-    addTx(groupId, {
-      source: 'challenge',
-      refId: `prepay_${Date.now()}`,
-      delta: -challengeForm.reward,
-      note: `发起挑战「${challengeForm.title}」预扣悬赏`,
-    }, userId);
-    
+
     createChallenge({
       title: challengeForm.title.trim(),
       creatorGroupId: groupId,

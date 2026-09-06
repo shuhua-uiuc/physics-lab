@@ -41,7 +41,8 @@ interface CoinState {
   ) => { solverReward: number; creatorRefund: number };
   settleRecruitment: (
     recruitment: Recruitment,
-    result: 'success' | 'partial' | 'fail'
+    result: 'success' | 'partial' | 'fail',
+    ownerGroupId?: string
   ) => { assigneePay: number; ownerRefund: number };
   settleProjectDone: (project: Project) => Record<string, number>;
   /** 组间能量币转账：本地乐观更新 + 后端原子记账（source='transfer'，收支共享 refId）。 */
@@ -71,7 +72,8 @@ export const useCoinStore = create<CoinState>((set, get) => {
     coinTxs: initialTxs,
 
     addTx: (groupId, tx, userId) => {
-      const balanceAfter = useGroupStore.getState().updateGroupCoins(groupId, tx.delta);
+      // 仅本地乐观更新（后端由业务端点统一记账），不触发 groupsApi.adjustCoins
+      const balanceAfter = useGroupStore.getState().adjustGroupCoinsLocal(groupId, tx.delta);
       const newTx: CoinTransaction = {
         id: uid(),
         groupId,
@@ -91,7 +93,9 @@ export const useCoinStore = create<CoinState>((set, get) => {
 
     transferCoins: (fromGroupId, toGroupId, amount, note, userId) => {
       const { adjustGroupCoinsLocal, getGroupById } = useGroupStore.getState();
+      if (!Number.isInteger(amount) || amount <= 0) return;
       const fromGroup = getGroupById(fromGroupId);
+      if (!fromGroup || fromGroup.totalCoins < amount) return;
       const toGroup = getGroupById(toGroupId);
       const refId = uid();
 
@@ -165,7 +169,7 @@ export const useCoinStore = create<CoinState>((set, get) => {
       return { solverReward, creatorRefund };
     },
 
-    settleRecruitment: (recruitment, result) => {
+    settleRecruitment: (recruitment, result, ownerGroupId) => {
       const { addTx } = get();
       const { getUserById } = useGroupStore.getState();
       const assigneeUser = recruitment.assigneeUserId
@@ -198,21 +202,13 @@ export const useCoinStore = create<CoinState>((set, get) => {
         );
       }
 
-      if (ownerRefund > 0) {
-        const projectStore = (useGroupStore as any).getState?.();
-        let ownerGroupId: string | undefined;
-        if (projectStore && (projectStore as any).getProjectById) {
-          const proj = (projectStore as any).getProjectById(recruitment.projectId);
-          ownerGroupId = proj?.ownerGroupId;
-        }
-        if (ownerGroupId) {
-          addTx(ownerGroupId, {
-            source: 'recruit',
-            refId: recruitment.id,
-            delta: ownerRefund,
-            note: `招募「${recruitment.title}」${result === 'fail' ? '失败' : '部分完成'}回收`,
-          });
-        }
+      if (ownerRefund > 0 && ownerGroupId) {
+        addTx(ownerGroupId, {
+          source: 'recruit',
+          refId: recruitment.id,
+          delta: ownerRefund,
+          note: `招募「${recruitment.title}」${result === 'fail' ? '失败' : '部分完成'}回收`,
+        });
       }
 
       return { assigneePay, ownerRefund };

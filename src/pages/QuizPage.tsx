@@ -180,12 +180,16 @@ export default function QuizPage(props: QuizPageProps) {
     if (mode === 'quiz') {
       if (sessionId) {
         const graded = useTheoryStore.getState().gradeQuiz(sessionId);
-        pushToast(
-          passed
-            ? `检测通过！得分 ${graded.score} 分`
-            : `检测未通过，得分 ${graded.score} 分，请继续学习`,
-          passed ? 'success' : 'warning'
-        );
+        if (!graded) {
+          pushToast('评分会话不存在，无法检测', 'error');
+        } else {
+          pushToast(
+            passed
+              ? `检测通过！得分 ${graded.score} 分`
+              : `检测未通过，得分 ${graded.score} 分，请继续学习`,
+            passed ? 'success' : 'warning'
+          );
+        }
       }
     } else {
       if (challengeId && groupId) {

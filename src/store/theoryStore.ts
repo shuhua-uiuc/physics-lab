@@ -60,8 +60,9 @@ const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice
 
 const isAnswerCorrect = (question: Question, userAnswer: any): boolean => {
   if (question.type === 'multiple') {
-    const correct = (question.answer as number[]).sort().join(',');
-    const user = Array.isArray(userAnswer) ? userAnswer.sort().join(',') : '';
+    // 拷贝后再排序，避免就地修改持久化的题目答案
+    const correct = [...(question.answer as number[])].sort().join(',');
+    const user = Array.isArray(userAnswer) ? [...userAnswer].sort().join(',') : '';
     return correct === user;
   }
   if (question.type === 'judge') {

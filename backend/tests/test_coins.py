@@ -227,3 +227,27 @@ def test_recruitment_settle_fail_refund_owner(client, auth):
     # 失败：报酬退回项目归属组 g-1
     assert _balances(client, auth)["g-1"] == 550
     assert _balances(client, auth)["g-2"] == 300
+
+
+def test_challenge_cannot_resubmit(client, auth):
+    cid = _create_challenge(client, auth, reward=100)
+    ok = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-3"))
+    assert ok.status_code == 200
+    resp = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-3"))
+    assert resp.status_code == 400
+
+
+def test_challenge_creator_cannot_self_submit(client, auth):
+    cid = _create_challenge(client, auth, reward=100)
+    resp = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-1"))
+    assert resp.status_code == 403
+
+
+def test_create_challenge_insufficient_balance(client, auth):
+    # u-3 属 g-2（300 币），创建 reward=500 的挑战应被拒绝
+    resp = client.post(
+        "/api/challenges",
+        json={"title": "高价挑战", "topicId": "t-1", "questionIds": ["q-1", "q-2"], "reward": 500, "deadline": DEADLINE},
+        headers=auth("u-3"),
+    )
+    assert resp.status_code == 400

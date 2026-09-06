@@ -11,6 +11,7 @@ import {
 } from '../data/mockData';
 import { groupsApi, usersApi } from '../lib/apiService';
 import { syncToApi } from '../lib/syncQueue';
+import { apiEnabled } from '../lib/apiClient';
 
 interface GroupState {
   groups: Group[];
@@ -64,6 +65,17 @@ export const useGroupStore = create<GroupState>((set, get) => {
 
     addGroup: (name, initialCoins) => {
       const { groups, users, classMeta } = get();
+      // 在线模式：不本地造临时组，等后端返回真实 id 后再注入，避免成员被分配到
+      // 随后端重拉而变化的临时 id；离线模式直接本地新增。
+      if (apiEnabled) {
+        syncToApi(async () => {
+          await groupsApi.create(name, initialCoins);
+          const fresh = await groupsApi.list();
+          set({ groups: fresh });
+          persistAll(fresh, get().users, get().classMeta);
+        }, 'groups.create');
+        return;
+      }
       const id = `g_${uid()}`;
       const newGroup: Group = {
         id,
@@ -77,13 +89,6 @@ export const useGroupStore = create<GroupState>((set, get) => {
       const nextGroups = [...groups, newGroup];
       persistAll(nextGroups, users, classMeta);
       set({ groups: nextGroups });
-      // 后端会生成自己的 ID，创建成功后用后端全量列表对齐本地。
-      syncToApi(async () => {
-        await groupsApi.create(name, initialCoins);
-        const fresh = await groupsApi.list();
-        set({ groups: fresh });
-        persistAll(fresh, get().users, get().classMeta);
-      }, 'groups.create');
     },
 
     deleteGroup: (id) => {

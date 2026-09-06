@@ -45,55 +45,67 @@ export async function bootstrapFromApi(force = false): Promise<void> {
   if (loadingPromise && !force) return loadingPromise;
 
   loadingPromise = (async () => {
-    const [
-      groups,
-      users,
-      topics,
-      questions,
-      challenges,
-      projects,
-      recruitments,
-      showcase,
-      coinTxs,
-      classMeta,
-    ] = await Promise.all([
-      groupsApi.list(),
-      usersApi.list(),
-      theoryApi.topics(),
-      theoryApi.questions(),
-      theoryApi.challenges(),
-      projectsApi.list(),
-      recruitmentsApi.list(),
-      showcaseApi.list(),
-      coinsApi.transactions() as Promise<any[]>,
-      coinsApi.classMeta(),
-    ]);
+    const pick = <T>(r: PromiseSettledResult<T>): T | null => (r.status === 'fulfilled' ? r.value : null);
 
-    useGroupStore.setState({
-      groups,
-      users,
-      classMeta,
-    });
+    // 单个接口失败（如过期 token、网络抖动）不再中断整批拉取；成功的部分照常注入，
+    // 失败字段保持 store 原有数据，避免整页回退旧数据且无提示。
+    const [rGroups, rUsers, rTopics, rQuestions, rChallenges, rProjects, rRecruits, rShowcase, rCoinTxs, rClassMeta] =
+      await Promise.allSettled([
+        groupsApi.list(),
+        usersApi.list(),
+        theoryApi.topics(),
+        theoryApi.questions(),
+        theoryApi.challenges(),
+        projectsApi.list(),
+        recruitmentsApi.list(),
+        showcaseApi.list(),
+        coinsApi.transactions() as Promise<any[]>,
+        coinsApi.classMeta(),
+      ]);
 
-    useTheoryStore.setState({
-      topics,
-      questions,
-      challenges: reviveDates(challenges, ['deadline']),
-    });
+    const groups = pick(rGroups);
+    const users = pick(rUsers);
+    const classMeta = pick(rClassMeta);
+    if (groups != null || users != null || classMeta != null) {
+      useGroupStore.setState({
+        ...(groups != null ? { groups } : {}),
+        ...(users != null ? { users } : {}),
+        ...(classMeta != null ? { classMeta } : {}),
+      });
+    }
 
-    useProjectStore.setState({
-      projects: reviveDates(projects, ['startDate', 'dueDate']),
-      recruitments: reviveDates(recruitments, ['deadline']),
-      showcaseItems: reviveDates(showcase, ['createdAt']),
-    });
+    const topics = pick(rTopics);
+    const questions = pick(rQuestions);
+    const challenges = pick(rChallenges);
+    if (topics != null || questions != null || challenges != null) {
+      useTheoryStore.setState({
+        ...(topics != null ? { topics } : {}),
+        ...(questions != null ? { questions } : {}),
+        ...(challenges != null ? { challenges: reviveDates(challenges, ['deadline']) } : {}),
+      });
+    }
 
-    useCoinStore.setState({
-      // 后端返回最新在前，这里归一化为时间正序（与离线模式的追加顺序一致），
-      // 避免依赖数组顺序的展示逻辑（如 reverse+slice）取错区间
-      coinTxs: reviveDates(coinTxs, ['createdAt']).sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      ),
-    });
+    const projects = pick(rProjects);
+    const recruitments = pick(rRecruits);
+    const showcase = pick(rShowcase);
+    if (projects != null || recruitments != null || showcase != null) {
+      useProjectStore.setState({
+        ...(projects != null ? { projects: reviveDates(projects, ['startDate', 'dueDate']) } : {}),
+        ...(recruitments != null ? { recruitments: reviveDates(recruitments, ['deadline']) } : {}),
+        ...(showcase != null ? { showcaseItems: reviveDates(showcase, ['createdAt']) } : {}),
+      });
+    }
+
+    const coinTxs = pick(rCoinTxs);
+    if (coinTxs != null) {
+      useCoinStore.setState({
+        // 后端返回最新在前，这里归一化为时间正序（与离线模式的追加顺序一致），
+        // 避免依赖数组顺序的展示逻辑（如 reverse+slice）取错区间
+        coinTxs: reviveDates(coinTxs, ['createdAt']).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        ),
+      });
+    }
 
     loaded = true;
   })();

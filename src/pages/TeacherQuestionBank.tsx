@@ -262,8 +262,12 @@ export default function TeacherQuestionBank() {
     }, 300);
   };
 
-  const isAnswer = (q: (typeof questions)[number], i: number) =>
-    Array.isArray(q.answer) ? q.answer.includes(i) : q.answer === i;
+  const isAnswer = (q: (typeof questions)[number], i: number) => {
+    if (Array.isArray(q.answer)) return q.answer.includes(i);
+    // 判断题：options[0]=正确(true)，options[1]=错误(false)
+    if (q.type === 'judge') return (i === 0) === Boolean(q.answer);
+    return q.answer === i;
+  };
 
   return (
     <div className="w-full space-y-6">

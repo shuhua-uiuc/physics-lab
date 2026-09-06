@@ -35,6 +35,7 @@ import {
 import MissionShell from '@/components/layout/MissionShell';
 import Checkbox from '@/components/ui/Checkbox';
 import { useGroupStore } from '@/store/groupStore';
+import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 
 function useTicker(target: number, duration = 900) {
@@ -128,7 +129,8 @@ const SEMESTER_GOALS = [
 
 export default function ResearchProfile() {
   const { users, groups } = useGroupStore();
-  const me = users.find((u) => u.id === 'u-06') || users[5] || users[0];
+  const authUserId = useAuthStore((s) => s.userId);
+  const me = users.find((u) => u.id === authUserId) || users[0];
   const myGroup = groups.find((g) => g.id === me.groupId);
   const timeline = useMemo(() => buildTimeline(), []);
   const [goals, setGoals] = useState<Record<string, boolean>>(

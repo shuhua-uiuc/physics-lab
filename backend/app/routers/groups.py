@@ -92,7 +92,10 @@ def delete_group(group_id: str, db: Session = Depends(get_db), _: User = Depends
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="小组不存在")
-    db.query(User).filter(User.group_id == group_id).delete()
+    # 解绑成员（保留账号与班级归属），而非删除学生账号
+    for m in db.query(User).filter(User.group_id == group_id).all():
+        m.group_id = None
+        m.member_role = "member"
     db.delete(group)
     db.commit()
     return {"ok": True}
@@ -122,6 +125,8 @@ def set_leader(group_id: str, user_id: str, db: Session = Depends(get_db), _: Us
     members = db.query(User).filter(User.group_id == group_id).all()
     if not members:
         raise HTTPException(status_code=404, detail="小组无成员")
+    if not any(m.id == user_id for m in members):
+        raise HTTPException(status_code=400, detail="目标用户不是本小组成员")
     for m in members:
         m.member_role = "leader" if m.id == user_id else "member"
     db.commit()
@@ -194,6 +199,13 @@ def assign_user_group(
         group = db.get(Group, payload.groupId)
         if not group:
             raise HTTPException(status_code=404, detail="目标小组不存在")
+        if payload.role == "leader":
+            # 降级目标小组现任组长，避免出现两个组长
+            for other in db.query(User).filter(
+                User.group_id == payload.groupId, User.member_role == "leader"
+            ).all():
+                if other.id != u.id:
+                    other.member_role = "member"
         u.group_id = payload.groupId
         if group.class_id:
             u.class_id = group.class_id
