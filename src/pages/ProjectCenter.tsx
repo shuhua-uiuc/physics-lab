@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Rocket,
@@ -25,6 +25,8 @@ import {
   ListTodo,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
+import { useProjectStore } from '@/store/projectStore';
+import { useGroupStore } from '@/store/groupStore';
 import type { ProjectStatus, Project } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -77,148 +79,51 @@ const STATUS_ICONS: Record<ProjectStatus, any> = {
   frozen: Snowflake,
 };
 
-const MOCK_PLANETS: ProjectPlanet[] = [
-  {
-    id: 'p1', title: '磁悬浮列车模型', topic: '电磁学', status: 'progress', progress: 68,
-    rewardCoins: 320, dueInDays: 3,
-    owners: [{ name: '张', color: '#4F7CFF' }, { name: '李', color: '#FF8A34' }, { name: '王', color: '#22C55E' }],
-    milestones: 5,
-    description: '利用电磁感应与楞次定律，构建可稳定悬浮的磁悬浮列车模型，测量悬浮高度与电流的关系。',
-    equipmentList: [
-      { name: '钕铁硼强磁铁', qty: 12, category: 'electric' },
-      { name: '漆包铜线 0.5mm', qty: 200, category: 'electric' },
-      { name: '可调直流电源', qty: 2, category: 'electric' },
-      { name: '亚克力轨道', qty: 1, category: 'mechanical' },
-    ],
-    safetyPassed: true,
-    groupName: '麦克斯韦闪电队',
-    difficulties: ['悬浮稳定性难以控制', '线圈发热量过大', '轨道加工精度要求高'],
-    solutions: [
-      { text: '采用双线圈差动反馈电路', author: '张伟' },
-      { text: '增加散热片与 PWM 调速', author: '李娜' },
-      { text: '3D 打印定制轨道槽', author: '王芳' },
-    ],
-    milestonesData: [
-      { name: '方案设计', progress: 100, status: 'done' },
-      { name: '材料采购', progress: 100, status: 'done' },
-      { name: '线圈绕制', progress: 100, status: 'done' },
-      { name: '控制系统调试', progress: 60, status: 'progress' },
-      { name: '成果验收', progress: 0, status: 'pending' },
-    ],
-  },
-  {
-    id: 'p2', title: '全息投影实验箱', topic: '光学', status: 'review', progress: 92,
-    rewardCoins: 280, dueInDays: 1,
-    owners: [{ name: '陈', color: '#8B5CF6' }, { name: '杨', color: '#F59E0B' }],
-    milestones: 5,
-    description: '搭建反射式全息照相平台，使用氦氖激光拍摄三维全息图，实现真彩色物体的白光再现。',
-    equipmentList: [
-      { name: '氦氖激光器 10mW', qty: 1, category: 'optical' },
-      { name: '光学防震平台', qty: 1, category: 'optical' },
-      { name: '全息干版', qty: 20, category: 'optical' },
-    ],
-    safetyPassed: true,
-    groupName: '伽利略观测站',
-    difficulties: ['平台微振动干扰', '光路对准耗时长', '曝光条件严苛'],
-    solutions: [
-      { text: '充气式防震腿 + 砂箱', author: '陈杰' },
-      { text: '预置三镜共轴基准架', author: '杨静' },
-    ],
-    milestonesData: [
-      { name: '光路设计', progress: 100, status: 'done' },
-      { name: '平台搭建', progress: 100, status: 'done' },
-      { name: '首次拍摄', progress: 100, status: 'done' },
-      { name: '参数优化', progress: 100, status: 'done' },
-      { name: '教师评审', progress: 40, status: 'progress' },
-    ],
-  },
-  {
-    id: 'p3', title: '斯特林发动机小车', topic: '热学', status: 'done', progress: 100,
-    rewardCoins: 260, dueInDays: 0,
-    owners: [{ name: '赵', color: '#22C55E' }, { name: '黄', color: '#4F7CFF' }, { name: '周', color: '#FF8A34' }, { name: '吴', color: '#F59E0B' }],
-    milestones: 5,
-    description: '自制低温差斯特林发动机，驱动迷你小车竞速，探究热机效率与冷热源温差的定量关系。',
-    equipmentList: [
-      { name: '玻璃试管 30mm', qty: 4, category: 'thermal' },
-      { name: '精密滚珠轴承', qty: 8, category: 'mechanical' },
-      { name: '蜡烛 + 酒精灯', qty: 6, category: 'thermal' },
-    ],
-    safetyPassed: true,
-    groupName: '牛顿先锋队',
-    difficulties: ['活塞密封性差', '飞轮转动惯量匹配难', '热量散失严重'],
-    solutions: [{ text: '聚四氟乙烯活塞 + 石墨润滑', author: '赵磊' }],
-    milestonesData: [
-      { name: '方案设计', progress: 100, status: 'done' },
-      { name: '零件加工', progress: 100, status: 'done' },
-      { name: '总装调试', progress: 100, status: 'done' },
-      { name: '竞速比赛', progress: 100, status: 'done' },
-      { name: '结题汇报', progress: 100, status: 'done' },
-    ],
-  },
-  {
-    id: 'p4', title: '盖革计数器 DIY', topic: '原子物理', status: 'planning', progress: 15,
-    rewardCoins: 380, dueInDays: 18,
-    owners: [{ name: '徐', color: '#F04438' }],
-    milestones: 5,
-    description: '基于盖革-米勒管搭建便携式辐射检测仪，通过蓝牙记录环境本底辐射并绘制全天剂量曲线。',
-    equipmentList: [
-      { name: '盖革管 SBM-20', qty: 2, category: 'radiation' },
-      { name: '高压模块 400V', qty: 1, category: 'electric' },
-      { name: 'ESP32 开发板', qty: 1, category: 'electric' },
-    ],
-    safetyPassed: false,
-    groupName: '薛定谔猫队',
-    difficulties: ['高压电路安全设计', '微弱信号抗干扰', '放射源使用合规'],
-    solutions: [],
-    milestonesData: [
-      { name: '安全培训', progress: 40, status: 'progress' },
-      { name: '元器件采购', progress: 30, status: 'progress' },
-      { name: '电路设计', progress: 0, status: 'pending' },
-      { name: '调试校准', progress: 0, status: 'pending' },
-      { name: '实验验收', progress: 0, status: 'pending' },
-    ],
-  },
-  {
-    id: 'p5', title: '水波干涉可视化', topic: '波动', status: 'frozen', progress: 42,
-    rewardCoins: 180, dueInDays: 0,
-    owners: [{ name: '孙', color: '#8B5CF6' }, { name: '马', color: '#22C55E' }],
-    milestones: 5,
-    description: '采用低频振动器 + 高速摄影机 + 激光片光，定量拍摄水波干涉条纹并与理论公式拟合。',
-    equipmentList: [{ name: '音频振荡器', qty: 1, category: 'mechanical' }],
-    safetyPassed: true,
-    groupName: '爱因斯坦脑洞组',
-    difficulties: ['资金不足待定'],
-    solutions: [],
-    milestonesData: [
-      { name: '方案设计', progress: 100, status: 'done' },
-      { name: '设备采购', progress: 50, status: 'progress' },
-      { name: '搭建调试', progress: 0, status: 'pending' },
-      { name: '数据采集', progress: 0, status: 'pending' },
-      { name: '论文撰写', progress: 0, status: 'pending' },
-    ],
-  },
-  {
-    id: 'p6', title: 'μ 子寿命测量', topic: '相对论', status: 'failed', progress: 38,
-    rewardCoins: 0, dueInDays: 0,
-    owners: [{ name: '朱', color: '#F04438' }, { name: '郭', color: '#F59E0B' }],
-    milestones: 5,
-    description: '利用塑料闪烁体 + 光电倍增管，尝试探测大气μ子并测量其平均衰变寿命以验证时间膨胀。',
-    equipmentList: [],
-    safetyPassed: false,
-    groupName: '特斯拉电流团',
-    difficulties: ['信号信噪比不足', '未能采集有效数据'],
-    solutions: [],
-    milestonesData: [
-      { name: '理论准备', progress: 100, status: 'done' },
-      { name: '探测器搭建', progress: 90, status: 'done' },
-      { name: '数据采集', progress: 20, status: 'failed' as any },
-      { name: '分析拟合', progress: 0, status: 'pending' },
-      { name: '报告提交', progress: 0, status: 'pending' },
-    ],
-  },
-];
+const OWNER_COLORS = ['#4F7CFF', '#FF8A34', '#22C55E', '#8B5CF6', '#F59E0B', '#06B6D4'];
 
-const GROUPS = ['全部小组', '牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'];
+/** 把真实项目映射成展示星球的形状；里程碑按真实进度派生。 */
+function buildPlanets(projects: Project[], groups: any[], users: any[]): ProjectPlanet[] {
+  return projects.map((p, idx) => {
+    const g = groups.find((x) => x.id === p.ownerGroupId);
+    const members = users.filter((u) => u.groupId === p.ownerGroupId);
+    const start = p.startDate instanceof Date ? p.startDate : new Date(p.startDate);
+    const due = p.dueDate instanceof Date ? p.dueDate : new Date(p.dueDate);
+    const now = Date.now();
+    const dueInDays = Math.max(0, Math.ceil((due.getTime() - now) / 86400000));
+    const prog = Math.max(0, Math.min(100, p.progress));
+    const ms = (n: string, doneAt: number, st: 'done' | 'progress' | 'pending') =>
+      ({ name: n, progress: prog >= doneAt ? 100 : Math.min(100, Math.round(prog)), status: prog >= doneAt ? 'done' : prog > 0 ? st : 'pending' });
+    const milestonesData = [
+      ms('方案设计', 20, 'progress'),
+      ms('材料采购', 40, 'progress'),
+      ms('搭建调试', 60, 'progress'),
+      ms('数据采集', 80, 'progress'),
+      ms('成果验收', 100, 'progress'),
+    ];
+    return {
+      id: p.id,
+      title: p.title,
+      topic: p.topic,
+      status: p.status,
+      progress: prog,
+      rewardCoins: p.rewardCoins,
+      dueInDays,
+      owners: members.slice(0, 5).map((m, i) => ({ name: m.name.charAt(0), color: OWNER_COLORS[i % 6] })),
+      milestones: 5,
+      description: p.results || p.title,
+      equipmentList: p.equipmentList || [],
+      safetyPassed: Object.keys(p.safetyPassed || {}).length > 0,
+      groupName: g?.name || '未分组',
+      difficulties: (p.difficulties || '')
+        .split('\n')
+        .map((d) => d.replace(/^#\s*|\*\*|^-\s*/g, '').trim())
+        .filter(Boolean),
+      solutions: [],
+      milestonesData,
+    };
+  });
+}
+
 const STATUSES: ProjectStatus[] = ['planning', 'progress', 'review', 'done', 'failed', 'frozen'];
 
 export default function ProjectCenter() {
@@ -232,8 +137,11 @@ export default function ProjectCenter() {
   const [kanbanOpen, setKanbanOpen] = useState(false);
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set(['t-0-1', 't-0-2', 't-1-1']));
   const pushToast = useUIStore((s) => s.pushToast);
+  const { projects } = useProjectStore();
+  const { groups, users } = useGroupStore();
+  const planets = useMemo(() => buildPlanets(projects, groups, users), [projects, groups, users]);
 
-  const filteredPlanets = MOCK_PLANETS
+  const filteredPlanets = planets
     .filter((p) => {
       if (searchQuery && !p.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (groupFilter !== '全部小组' && p.groupName !== groupFilter) return false;
@@ -245,7 +153,7 @@ export default function ProjectCenter() {
       return b.rewardCoins - a.rewardCoins;
     });
 
-  const selectedPlanet = MOCK_PLANETS.find((p) => p.id === selectedId) || MOCK_PLANETS[0];
+  const selectedPlanet = planets.find((p) => p.id === selectedId) || planets[0];
 
   const toggleStatus = (s: ProjectStatus) => {
     setStatusFilters((prev) =>
@@ -267,12 +175,13 @@ export default function ProjectCenter() {
   };
 
   const stats = {
-    planning: MOCK_PLANETS.filter((p) => p.status === 'planning').length,
-    progress: MOCK_PLANETS.filter((p) => p.status === 'progress').length,
-    review: MOCK_PLANETS.filter((p) => p.status === 'review').length,
-    done: MOCK_PLANETS.filter((p) => p.status === 'done').length,
-    frozen: MOCK_PLANETS.filter((p) => p.status === 'frozen').length,
+    planning: planets.filter((p) => p.status === 'planning').length,
+    progress: planets.filter((p) => p.status === 'progress').length,
+    review: planets.filter((p) => p.status === 'review').length,
+    done: planets.filter((p) => p.status === 'done').length,
+    frozen: planets.filter((p) => p.status === 'frozen').length,
   };
+  const groupOptions = ['全部小组', ...groups.map((g) => g.name)];
 
   const kanbanData = selectedPlanet.milestonesData.map((m, i): {
     milestone: ProjectPlanet['milestonesData'][number];
@@ -378,7 +287,7 @@ export default function ProjectCenter() {
               onChange={(e) => setGroupFilter(e.target.value)}
               className="glass-card !py-2 !px-3 rounded-xl text-sm font-bold text-ink-600 border-0 outline-none cursor-pointer min-w-[140px]"
             >
-              {GROUPS.map((g) => (
+              {groupOptions.map((g) => (
                 <option key={g}>{g}</option>
               ))}
             </select>
