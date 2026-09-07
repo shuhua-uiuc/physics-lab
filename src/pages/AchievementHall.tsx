@@ -465,7 +465,7 @@ export default function AchievementHall() {
                   <Medal size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-ink-800 text-[15px]">Hall of Fame</h3>
+                  <h3 className="font-bold text-ink-800 text-[15px]">Hall of Fame <span className="text-[10px] text-ink-400 font-normal">（演示数据）</span></h3>
                   <p className="text-[11px] text-ink-400">本月 Top3 杰作</p>
                 </div>
               </div>
@@ -534,7 +534,7 @@ export default function AchievementHall() {
                   <Activity size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-ink-800 text-[15px]">精选数据集</h3>
+                  <h3 className="font-bold text-ink-800 text-[15px]">精选数据集 <span className="text-[10px] text-ink-400 font-normal">（演示数据）</span></h3>
                   <p className="text-[11px] text-ink-400">开放共享 · 可下载</p>
                 </div>
               </div>

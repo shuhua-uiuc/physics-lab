@@ -82,38 +82,6 @@ interface TimelineEvent {
   coins: number;
 }
 
-function buildTimeline(): TimelineEvent[] {
-  const types: Array<TimelineEvent['type']> = ['challenge', 'project', 'exam', 'recruit'];
-  const titles: Record<TimelineEvent['type'], string[]> = {
-    challenge: ['电磁学高阶对决', '力学基础挑战赛', '光学概念速答', '综合知识杯'],
-    project: ['磁悬浮列车模型', '太阳能效率对比', '驻波共振演示', '云室径迹观测', '霍尔效应扫描'],
-    exam: ['电学安全考核', '光学安全考核', '热学安全考核', '力学理论考核'],
-    recruit: ['跨组协助硬件搭建', '数据分析兼职', '文档撰写协助', '实验操作支援'],
-  };
-  const list: TimelineEvent[] = [];
-  for (let i = 0; i < 20; i++) {
-    const t = types[i % 4];
-    const variants = titles[t];
-    const d = new Date(Date.now() - i * 5 * 86400000);
-    const label = `${d.getMonth() + 1}/${d.getDate()}`;
-    list.push({
-      id: `e-${i + 1}`,
-      date: label,
-      type: t,
-      title: variants[i % variants.length],
-      desc:
-        t === 'challenge'
-          ? '答题准确率 88%，击败同年级 78% 挑战者'
-          : t === 'project'
-            ? '小组内分工完成数据分析与误差讨论章节'
-            : t === 'exam'
-              ? '92 分通过，安全知识已掌握'
-              : '成功中标并提前 1 天交付',
-      coins: t === 'project' ? 120 + (i % 3) * 40 : t === 'challenge' ? 60 + (i % 4) * 20 : 40 + (i % 5) * 10,
-    });
-  }
-  return list;
-}
 
 const SKILL_RADAR = [
   { skill: '理论基础', A: 92 },
@@ -138,12 +106,20 @@ export default function ResearchProfile() {
   const me = users.find((u) => u.id === authUserId) || users[0];
   const myGroup = groups.find((g) => g.id === me.groupId);
   const { projects, recruitments } = useProjectStore();
-  const { challenges } = useTheoryStore();
+  const { challenges, quizSessions } = useTheoryStore();
   const doneProjects = projects.filter((p) => p.ownerGroupId === me.groupId && p.status === 'done').length;
   const createdChallenges = challenges.filter((c) => c.creatorGroupId === me.groupId).length;
   const recruitHelps = recruitments.filter((r) => r.assigneeUserId === me.id && r.status === 'done').length;
   const personalCoins = me.personalCoins || 0;
-  const timeline = useMemo(() => buildTimeline(), []);
+  const timeline = useMemo(() => {
+    const events: TimelineEvent[] = [];
+    const dstr = (v: any) => { const d = v instanceof Date ? v : new Date(v); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    for (const p of projects) if (p.ownerGroupId === me.groupId) events.push({ id: `p-${p.id}`, date: dstr(p.startDate), type: 'project', title: p.title, desc: `小组项目 · 进度 ${p.progress}%`, coins: p.rewardCoins });
+    for (const c of challenges) if (c.creatorGroupId === me.groupId) events.push({ id: `c-${c.id}`, date: dstr(c.deadline), type: 'challenge', title: c.title, desc: '发起知识挑战', coins: c.reward });
+    for (const qs of quizSessions) events.push({ id: `q-${qs.id}`, date: dstr(qs.createdAt), type: 'exam', title: '理论 / 安全测验', desc: `${qs.score} 分 · ${qs.passed ? '通过' : '未过'}`, coins: 0 });
+    for (const r of recruitments) if (r.assigneeUserId === me.id) events.push({ id: `r-${r.id}`, date: dstr(r.deadline), type: 'recruit', title: r.title, desc: '跨组协助', coins: r.actualPay || 0 });
+    return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 20);
+  }, [me, projects, challenges, quizSessions, recruitments]);
   const [goals, setGoals] = useState<Record<string, boolean>>(
     Object.fromEntries(SEMESTER_GOALS.map((g) => [g.id, g.checked]))
   );
@@ -322,7 +298,7 @@ export default function ResearchProfile() {
                 <div className="flex items-center gap-2 mb-3">
                   <Award size={15} className="text-alert-500" />
                   <span className="text-[13px] font-bold text-ink-800">徽章墙</span>
-                  <span className="text-[11px] text-ink-400 font-mono">10 / 24</span>
+                  <span className="text-[11px] text-ink-400 font-mono">10 / 24（演示数据）</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {BADGES.map((b, i) => {
@@ -437,7 +413,7 @@ export default function ResearchProfile() {
                   <Radar size={19} className="text-mission-500" />
                   Skill Radar · 能力六维图
                 </h2>
-                <span className="chip-mission !py-0.5 !px-2 !text-[10px]">综合 B+</span>
+                <span className="chip-mission !py-0.5 !px-2 !text-[10px]">综合 B+（演示数据）</span>
               </div>
               <div className="h-[300px] -mx-2">
                 <ResponsiveContainer width="100%" height="100%">

@@ -198,3 +198,16 @@ class ClassMeta(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     initial_coins_per_group: Mapped[int] = mapped_column(Integer, default=500)
     term_name: Mapped[str] = mapped_column(String, default="")
+
+
+class SafetyRecord(Base):
+    """安全科目考核记录：某个学生某安全分类（electric/thermal/...）的一次考试结果。"""
+
+    __tablename__ = "safety_records"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

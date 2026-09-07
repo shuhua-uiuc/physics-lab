@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import services
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Challenge, Group, Question, QuizSession, Topic, User
+from ..models import Challenge, Group, Question, QuizSession, SafetyRecord, Topic, User
 from ..schemas import (
     ChallengeCreate,
     ChallengeOut,
@@ -16,6 +16,8 @@ from ..schemas import (
     QuizAnswerRequest,
     QuizSessionOut,
     QuizStartRequest,
+    SafetyRecordCreate,
+    SafetyRecordOut,
     TopicOut,
 )
 
@@ -238,3 +240,35 @@ def submit_challenge(
     db.commit()
     db.refresh(challenge)
     return challenge
+
+
+# ---------- Safety exam records ----------
+@router.post("/safety/records", response_model=SafetyRecordOut)
+def create_safety_record(
+    payload: SafetyRecordCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """记录一次安全科目考核结果（用于安全实验室按真实记录算通过率）。"""
+    rec = SafetyRecord(
+        id=services.gen_id("srec_"),
+        user_id=current.id,
+        category=payload.category,
+        score=payload.score,
+        passed=payload.passed,
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+@router.get("/safety/records", response_model=list[SafetyRecordOut])
+def list_safety_records(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """当前用户的安全考核记录（按时间倒序）。"""
+    return (
+        db.query(SafetyRecord)
+        .filter(SafetyRecord.user_id == current.id)
+        .order_by(SafetyRecord.created_at.desc())
+        .all()
+    )

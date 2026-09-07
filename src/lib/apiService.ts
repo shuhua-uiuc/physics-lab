@@ -177,6 +177,21 @@ export interface PersonalRankRow {
   rank: number;
 }
 
+// ---------- Safety exam records ----------
+export interface SafetyRecord {
+  id: string;
+  category: string;
+  score: number;
+  passed: boolean;
+  createdAt: string;
+}
+
+export const safetyApi = {
+  record: (category: string, score: number, passed: boolean) =>
+    api.post<SafetyRecord>('/api/safety/records', { category, score, passed }),
+  myRecords: () => api.get<SafetyRecord[]>('/api/safety/records'),
+};
+
 export const coinsApi = {
   transactions: (groupId?: string) =>
     api.get(`/api/coin-transactions${groupId ? `?group_id=${groupId}` : ''}`),

@@ -38,6 +38,24 @@ class ChangePassword(BaseModel):
     newPassword: str = Field(min_length=6, max_length=64)
 
 
+class SafetyRecordCreate(BaseModel):
+    """提交一次安全科目考核结果。"""
+
+    category: str
+    score: int = Field(ge=0, le=100)
+    passed: bool
+
+
+class SafetyRecordOut(BaseModel):
+    id: str
+    category: str
+    score: int
+    passed: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, alias_generator=to_camel, populate_by_name=True)
+
+
 class TokenResponse(CamelModel):
     access_token: str
     token_type: str = "bearer"

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { safetyApi } from '@/lib/apiService';
 
 type ExamStep = 'notice' | 'quiz' | 'result';
 
@@ -120,6 +121,10 @@ export default function SafetyExam() {
     const passed = score >= 80;
     setSubmitted({ score, passed });
     setStep('result');
+    // 上报安全科目考核记录（用于安全实验室真实通过率）
+    if (userId && examCategory) {
+      safetyApi.record(examCategory, score, passed).catch(() => {});
+    }
 
     if (passed) {
       if (project && userId) markSafetyPass(project.id, userId);

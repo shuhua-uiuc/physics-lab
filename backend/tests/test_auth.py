@@ -102,3 +102,23 @@ def test_change_password_requires_auth(client):
         json={"oldPassword": "student123", "newPassword": "newpass123"},
     )
     assert resp.status_code == 401
+
+
+def test_safety_record_create_and_list(client, auth):
+    headers = auth("u-1")
+    resp = client.post(
+        "/api/safety/records",
+        json={"category": "electric", "score": 90, "passed": True},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["category"] == "electric" and body["passed"] is True
+
+    l = client.get("/api/safety/records", headers=headers).json()
+    assert any(r["category"] == "electric" for r in l)
+
+
+def test_safety_record_requires_auth(client):
+    resp = client.post("/api/safety/records", json={"category": "electric", "score": 90, "passed": True})
+    assert resp.status_code == 401

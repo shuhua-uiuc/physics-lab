@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { safetyApi, SafetyRecord } from '@/lib/apiService';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -100,8 +101,29 @@ export default function SafetyLab() {
   const pushToast = useUIStore((s) => s.pushToast);
   const [activeTip, setActiveTip] = useState<SafetyTip | null>(null);
 
-  const passedCount = SAFETY_DOMAINS.filter((d) => d.status === 'passed').length;
-  const pendingCount = SAFETY_DOMAINS.filter((d) => d.status === 'pending').length;
+  const [records, setRecords] = useState<SafetyRecord[]>([]);
+  useEffect(() => {
+    safetyApi.myRecords().then(setRecords).catch(() => {});
+  }, []);
+  const recordsByCat = useMemo(() => {
+    const m: Record<string, SafetyRecord> = {};
+    for (const r of records) {
+      if (!m[r.category] || new Date(r.createdAt) > new Date(m[r.category].createdAt)) m[r.category] = r;
+    }
+    return m;
+  }, [records]);
+  const domains = SAFETY_DOMAINS.map((d) => {
+    const rec = recordsByCat[d.category];
+    return {
+      ...d,
+      passedQuestions: rec?.passed ? d.totalQuestions : 0,
+      passRate: rec ? rec.score : 0,
+      status: (rec ? (rec.passed ? 'passed' : 'review') : 'pending') as SafetyDomain['status'],
+    };
+  });
+
+  const passedCount = domains.filter((d) => d.status === 'passed').length;
+  const pendingCount = domains.filter((d) => d.status === 'pending' || d.status === 'review').length;
   const frozenCount = 1;
 
   return (
@@ -291,7 +313,7 @@ export default function SafetyLab() {
             六大安全领域 · 分类考核
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {SAFETY_DOMAINS.map((domain, idx) => {
+            {domains.map((domain, idx) => {
               const Icon = domain.icon;
               return (
                 <motion.div
