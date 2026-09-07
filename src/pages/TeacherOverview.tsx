@@ -11,6 +11,7 @@ import {
   Snowflake,
   Zap,
   BarChart3,
+  Download,
   PieChart,
   AlertTriangle,
   ShieldAlert,
@@ -40,8 +41,7 @@ import {
   Legend,
 } from 'recharts';
 import MissionShell from '@/components/layout/MissionShell';
-import { useGroupStore } from '@/store/groupStore';
-import { useUIStore } from '@/store/uiStore';
+import { useGroupStore } from '@/store/groupStore';import { useUIStore } from '@/store/uiStore';
 import { useCoinStore } from '@/store/coinStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useQuestionBankStore } from '@/store/questionBankStore';
@@ -124,6 +124,19 @@ function SwordsIcon(props: any) {
   );
 }
 
+function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => String(r[h] ?? '')).join(','))].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function TeacherOverview() {
   const navigate = useNavigate();
   const { groups, users } = useGroupStore();
@@ -154,10 +167,17 @@ export default function TeacherOverview() {
   }, []);
   const classesById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes]);
 
-  // 数据洞察：能量币近 30 天趋势（按日累计）
+  // 数据洞察：班级筛选
+  const [insightClass, setInsightClass] = useState('all');
+  const groupIdToClass = useMemo(() => new Map(groups.map((g) => [g.id, g.classId || ''])), [groups]);
+  const insightClassFiltered = (classId: string | null | undefined) => insightClass === 'all' || classId === insightClass;
+  const groupInScope = (gid: string) => insightClassFiltered(groupIdToClass.get(gid));
+
+  // 数据洞察：能量币近 30 天趋势（按日累计，可按班过滤）
   const coinTrend = useMemo(() => {
     const byDay: Record<string, number> = {};
     for (const tx of coinTxs) {
+      if (!groupInScope(tx.groupId)) continue;
       const d = tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt);
       const k = `${d.getMonth() + 1}/${d.getDate()}`;
       byDay[k] = (byDay[k] || 0) + tx.delta;
@@ -170,27 +190,31 @@ export default function TeacherOverview() {
       days.push({ date: label(d.getMonth() + 1, d.getDate()), value: byDay[label(d.getMonth() + 1, d.getDate())] || 0 });
     }
     return days;
-  }, [coinTxs]);
+  }, [coinTxs, groupIdToClass, insightClass]);
 
-  // 数据洞察：招募状态分布
+  // 数据洞察：招募状态分布（按班过滤）
   const recruitStatus = useMemo(() => {
     const bins = { open: 0, assigned: 0, done: 0, failed: 0 };
-    for (const r of recruitments) bins[r.status] = (bins[r.status] || 0) + 1;
+    for (const r of recruitments) {
+      const p = projects.find((p) => p.id === r.projectId);
+      if (p && !insightClassFiltered(p.ownerGroupId ? groupIdToClass.get(p.ownerGroupId) : null)) continue;
+      bins[r.status] = (bins[r.status] || 0) + 1;
+    }
     return [
       { name: '招募中', value: bins.open, color: '#4F7CFF' },
       { name: '已分配', value: bins.assigned, color: '#F59E0B' },
       { name: '已完成', value: bins.done, color: '#22C55E' },
       { name: '已失败', value: bins.failed, color: '#F04438' },
     ].filter((b) => b.value > 0);
-  }, [recruitments]);
+  }, [recruitments, projects, groupIdToClass, insightClass]);
 
-  // 数据洞察：班级规模（小组数 / 学生数）
+  // 数据洞察：班级规模（小组数 / 学生数，可按班过滤）
   const classScale = useMemo(() => {
     const map = new Map<string, { groups: number; students: number }>();
-    for (const g of groups) { const c = map.get(g.classId || '') || { groups: 0, students: 0 }; c.groups++; map.set(g.classId || '', c); }
-    for (const u of users) { const c = map.get(u.classId || '') || { groups: 0, students: 0 }; c.students++; map.set(u.classId || '', c); }
+    for (const g of groups) { if (!insightClassFiltered(g.classId)) continue; const c = map.get(g.classId || '') || { groups: 0, students: 0 }; c.groups++; map.set(g.classId || '', c); }
+    for (const u of users) { if (!insightClassFiltered(u.classId)) continue; const c = map.get(u.classId || '') || { groups: 0, students: 0 }; c.students++; map.set(u.classId || '', c); }
     return [...map.entries()].map(([cid, v]) => ({ name: classesById[cid] || cid, 小组: v.groups, 学生: v.students }));
-  }, [groups, users, classesById]);
+  }, [groups, users, classesById, insightClass]);
 
   // 每个班级一个柱状图，组内按能量币降序，实现"不同班级分开放"
   const barByClass = useMemo(() => {
@@ -289,11 +313,23 @@ export default function TeacherOverview() {
     <MissionShell>
       <div className="space-y-6">
         <section className="glass-card p-5 md:p-6 rounded-[24px]">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-3">
             <h3 className="flex items-center gap-2 text-[16px] font-bold text-ink-800">
               <BarChart3 size={18} className="text-mission-500" /> 数据洞察
             </h3>
-            <span className="text-[11px] text-ink-400">实时 · 真实数据</span>
+            <div className="flex items-center gap-2">
+              <select
+                value={insightClass}
+                onChange={(e) => setInsightClass(e.target.value)}
+                className="input-field !py-1.5 !px-3 !rounded-xl text-[12px] font-semibold cursor-pointer min-w-[140px]"
+              >
+                <option value="all">全部班级</option>
+                {classes.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+              </select>
+              <button className="btn-ghost !py-1.5 !px-3 text-[12px] flex items-center gap-1" onClick={() => downloadCSV('能量币近30天.csv', coinTrend)}>
+                <Download size={13} /> CSV
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12 md:col-span-6 lg:col-span-4 rounded-2xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100/50 p-4">
@@ -312,7 +348,10 @@ export default function TeacherOverview() {
             </div>
 
             <div className="col-span-12 md:col-span-6 lg:col-span-4 rounded-2xl bg-gradient-to-br from-energy-50/60 to-alert-50/40 border border-energy-100/50 p-4">
-              <div className="text-[13px] font-bold text-ink-800 mb-2">招募状态分布</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[13px] font-bold text-ink-800">招募状态分布</div>
+                <button className="text-[11px] text-mission-600 flex items-center gap-1 hover:text-mission-700" onClick={() => downloadCSV('招募状态.csv', recruitStatus)}><Download size={12} />CSV</button>
+              </div>
               <div className="h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <RePieChart>
@@ -327,7 +366,10 @@ export default function TeacherOverview() {
             </div>
 
             <div className="col-span-12 lg:col-span-4 rounded-2xl bg-gradient-to-br from-growth-50/60 to-mission-50/40 border border-growth-100/50 p-4">
-              <div className="text-[13px] font-bold text-ink-800 mb-2">班级规模（小组/学生）</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[13px] font-bold text-ink-800">班级规模（小组/学生）</div>
+                <button className="text-[11px] text-mission-600 flex items-center gap-1 hover:text-mission-700" onClick={() => downloadCSV('班级规模.csv', classScale)}><Download size={12} />CSV</button>
+              </div>
               <div className="h-[180px] -mx-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={classScale} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
