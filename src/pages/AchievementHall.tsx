@@ -101,104 +101,48 @@ const PHYSICS_IMAGES = [
 ];
 
 
-const HALL_OF_FAME = [
-  {
-    id: 'hof-1',
-    imageUrl: 'https://images.unsplash.com/photo-1621361164796-86878265944d?w=600&q=80',
-    rank: 1,
-    title: '磁悬浮列车 · 电磁推进原型车',
-    author: '杨静',
-    authorId: 'u-06',
-    groupId: 'g-1',
-    comment: '结构设计大胆，线圈排布合理，悬浮稳定性极为出色。建议下一步尝试加入直线电机段。',
-    tutor: '李教授 · 电磁学教研室',
-    loves: 248,
-  },
-  {
-    id: 'hof-2',
-    imageUrl: 'https://images.unsplash.com/photo-1592861956093-46574388857e?w=600&q=80',
-    rank: 2,
-    title: '黑体辐射 · 高温铂金片拟合曲线',
-    author: '赵磊',
-    authorId: 'u-07',
-    groupId: 'g-2',
-    comment: '数据点覆盖了 300K→1200K 宽温区，与普朗克公式相关系数高达 0.997，实验报告可作范本。',
-    tutor: '王副教授 · 热物理实验室',
-    loves: 196,
-  },
-  {
-    id: 'hof-3',
-    imageUrl: 'https://images.unsplash.com/photo-1583465766507-a37458119065?w=600&q=80',
-    rank: 3,
-    title: '云室 α 径迹 · 扩散云室自制装置',
-    author: '马超',
-    authorId: 'u-13',
-    groupId: 'g-3',
-    comment: '学生团队独立完成了扩散云室的搭建，密封与温控做得非常专业，径迹清晰可辨。',
-    tutor: '陈研究员 · 近代物理中心',
-    loves: 162,
-  },
-];
-
-const DATASETS = [
-  {
-    id: 'ds-1',
-    title: '电磁感应发电效率曲线对比',
-    subtitle: '3 种线圈匝数 · 5 级转速',
-    color: '#4F7CFF',
-    chip: 'chip-mission',
-    chart: 'line' as const,
-    data: [
-      { rpm: '300', 'N=50': 42, 'N=100': 68, 'N=200': 88 },
-      { rpm: '600', 'N=50': 58, 'N=100': 85, 'N=200': 115 },
-      { rpm: '900', 'N=50': 74, 'N=100': 112, 'N=200': 152 },
-      { rpm: '1200', 'N=50': 88, 'N=100': 138, 'N=200': 188 },
-      { rpm: '1500', 'N=50': 102, 'N=100': 160, 'N=200': 218 },
-      { rpm: '1800', 'N=50': 115, 'N=100': 178, 'N=200': 242 },
-    ],
-  },
-  {
-    id: 'ds-2',
-    title: '各小组课题完成度分布',
-    subtitle: '6 舰队 · 3 种进度状态',
-    color: '#FF8A34',
-    chip: 'chip-energy',
-    chart: 'bar' as const,
-    data: [
-      { name: '牛顿', done: 8, progress: 4, frozen: 1 },
-      { name: '麦氏', done: 7, progress: 5, frozen: 0 },
-      { name: '爱因', done: 6, progress: 6, frozen: 2 },
-      { name: '特斯', done: 6, progress: 4, frozen: 1 },
-      { name: '伽利', done: 5, progress: 7, frozen: 0 },
-      { name: '薛定', done: 4, progress: 6, frozen: 2 },
-    ],
-  },
-  {
-    id: 'ds-3',
-    title: '挑战大厅 · 平均正确率趋势',
-    subtitle: '近 8 场综合知识挑战',
-    color: '#22C55E',
-    chip: 'chip-growth',
-    chart: 'line' as const,
-    data: [
-      { round: 'R1', 牛顿: 68, 麦氏: 62, 爱因: 71, 特斯: 65 },
-      { round: 'R2', 牛顿: 72, 麦氏: 65, 爱因: 68, 特斯: 70 },
-      { round: 'R3', 牛顿: 70, 麦氏: 70, 爱因: 75, 特斯: 68 },
-      { round: 'R4', 牛顿: 76, 麦氏: 68, 爱因: 72, 特斯: 74 },
-      { round: 'R5', 牛顿: 74, 麦氏: 73, 爱因: 78, 特斯: 76 },
-      { round: 'R6', 牛顿: 79, 麦氏: 71, 爱因: 76, 特斯: 78 },
-      { round: 'R7', 牛顿: 77, 麦氏: 75, 爱因: 80, 特斯: 79 },
-      { round: 'R8', 牛顿: 82, 麦氏: 78, 爱因: 83, 特斯: 81 },
-    ],
-  },
-];
-
 const GROUP_NAMES6 = ['牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'];
 
 export default function AchievementHall() {
   const { groups, users } = useGroupStore();
-  const { showcaseItems, addShowcaseItem } = useProjectStore();
+  const { showcaseItems, projects, addShowcaseItem } = useProjectStore();
   const { groupId, userId } = useAuthStore();
+
+  // 名人堂 = 真实 showcaseItems 点赞最高的前 3
+  const hallOfFame = useMemo(
+    () =>
+      showcaseItems
+        .slice()
+        .sort((a, b) => b.loves - a.loves)
+        .slice(0, 3)
+        .map((s, i) => ({
+          id: s.id,
+          rank: i + 1,
+          imageUrl: s.coverImage || 'https://images.unsplash.com/photo-1551985974-b826bc6379f5?w=600&q=80',
+          title: s.title || '优秀成果',
+          author: groups.find((g) => g.id === s.groupId)?.name || '学生团队',
+          authorId: '',
+          groupId: s.groupId,
+          comment: `本学期优秀作品 · ${s.loves} 人点赞`,
+          tutor: '教师评审组',
+          loves: s.loves,
+        })),
+    [showcaseItems, groups]
+  );
+
+  // 精选数据集 = 真实小组课题完成度分布
+  const datasets = useMemo(() => {
+    const membered = groups.filter((g) => users.some((u) => u.groupId === g.id)).slice(0, 6);
+    const rows = membered.map((g) => ({
+      name: g.name.slice(0, 2),
+      done: projects.filter((p) => p.ownerGroupId === g.id && p.status === 'done').length,
+      progress: projects.filter((p) => p.ownerGroupId === g.id && ['progress', 'review', 'planning'].includes(p.status)).length,
+      frozen: projects.filter((p) => p.ownerGroupId === g.id && p.status === 'failed').length,
+    }));
+    return [
+      { id: 'ds-1', title: '各小组课题完成度分布', subtitle: `${membered.length} 小组 · 按状态`, color: '#FF8A34', chip: 'chip-energy', chart: 'bar' as 'line' | 'bar', data: rows },
+    ];
+  }, [groups, users, projects]);
   const pushToast = useUIStore((s) => s.pushToast);
   
   const [tab, setTab] = useState<GalleryTab>('photo');
@@ -465,12 +409,12 @@ export default function AchievementHall() {
                   <Medal size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-ink-800 text-[15px]">Hall of Fame <span className="text-[10px] text-ink-400 font-normal">（演示数据）</span></h3>
+                  <h3 className="font-bold text-ink-800 text-[15px]">Hall of Fame</h3>
                   <p className="text-[11px] text-ink-400">本月 Top3 杰作</p>
                 </div>
               </div>
               <div className="space-y-4">
-                {HALL_OF_FAME.map((hof, i) => {
+                {hallOfFame.map((hof, i) => {
                   const author = users.find((u) => u.id === hof.authorId);
                   return (
                     <motion.div
@@ -534,12 +478,12 @@ export default function AchievementHall() {
                   <Activity size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-ink-800 text-[15px]">精选数据集 <span className="text-[10px] text-ink-400 font-normal">（演示数据）</span></h3>
+                  <h3 className="font-bold text-ink-800 text-[15px]">精选数据集</h3>
                   <p className="text-[11px] text-ink-400">开放共享 · 可下载</p>
                 </div>
               </div>
               <div className="space-y-3">
-                {DATASETS.map((ds, i) => (
+                {datasets.map((ds, i) => (
                   <motion.div
                     key={ds.id}
                     initial={{ opacity: 0, x: 10 }}
