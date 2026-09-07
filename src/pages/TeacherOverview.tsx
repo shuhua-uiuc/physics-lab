@@ -27,6 +27,8 @@ import {
 import {
   BarChart,
   Bar,
+  LineChart as ReLineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -152,6 +154,44 @@ export default function TeacherOverview() {
   }, []);
   const classesById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes]);
 
+  // 数据洞察：能量币近 30 天趋势（按日累计）
+  const coinTrend = useMemo(() => {
+    const byDay: Record<string, number> = {};
+    for (const tx of coinTxs) {
+      const d = tx.createdAt instanceof Date ? tx.createdAt : new Date(tx.createdAt);
+      const k = `${d.getMonth() + 1}/${d.getDate()}`;
+      byDay[k] = (byDay[k] || 0) + tx.delta;
+    }
+    const label = (m: number, dd: number) => `${m}/${dd}`;
+    const days: { date: string; value: number }[] = [];
+    const start = new Date(); start.setDate(start.getDate() - 29);
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(start.getTime() + i * 86400000);
+      days.push({ date: label(d.getMonth() + 1, d.getDate()), value: byDay[label(d.getMonth() + 1, d.getDate())] || 0 });
+    }
+    return days;
+  }, [coinTxs]);
+
+  // 数据洞察：招募状态分布
+  const recruitStatus = useMemo(() => {
+    const bins = { open: 0, assigned: 0, done: 0, failed: 0 };
+    for (const r of recruitments) bins[r.status] = (bins[r.status] || 0) + 1;
+    return [
+      { name: '招募中', value: bins.open, color: '#4F7CFF' },
+      { name: '已分配', value: bins.assigned, color: '#F59E0B' },
+      { name: '已完成', value: bins.done, color: '#22C55E' },
+      { name: '已失败', value: bins.failed, color: '#F04438' },
+    ].filter((b) => b.value > 0);
+  }, [recruitments]);
+
+  // 数据洞察：班级规模（小组数 / 学生数）
+  const classScale = useMemo(() => {
+    const map = new Map<string, { groups: number; students: number }>();
+    for (const g of groups) { const c = map.get(g.classId || '') || { groups: 0, students: 0 }; c.groups++; map.set(g.classId || '', c); }
+    for (const u of users) { const c = map.get(u.classId || '') || { groups: 0, students: 0 }; c.students++; map.set(u.classId || '', c); }
+    return [...map.entries()].map(([cid, v]) => ({ name: classesById[cid] || cid, 小组: v.groups, 学生: v.students }));
+  }, [groups, users, classesById]);
+
   // 每个班级一个柱状图，组内按能量币降序，实现"不同班级分开放"
   const barByClass = useMemo(() => {
     const map: Record<string, { classId: string; className: string; groups: typeof barData }> = {};
@@ -248,6 +288,62 @@ export default function TeacherOverview() {
   return (
     <MissionShell>
       <div className="space-y-6">
+        <section className="glass-card p-5 md:p-6 rounded-[24px]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="flex items-center gap-2 text-[16px] font-bold text-ink-800">
+              <BarChart3 size={18} className="text-mission-500" /> 数据洞察
+            </h3>
+            <span className="text-[11px] text-ink-400">实时 · 真实数据</span>
+          </div>
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 md:col-span-6 lg:col-span-4 rounded-2xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100/50 p-4">
+              <div className="text-[13px] font-bold text-ink-800 mb-2">能量币近 30 天</div>
+              <div className="h-[180px] -mx-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ReLineChart data={coinTrend} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} interval={5} />
+                    <YAxis tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} width={40} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />
+                    <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.96)' }} />
+                    <Line type="monotone" dataKey="value" stroke="#4F7CFF" strokeWidth={2} dot={false} />
+                  </ReLineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="col-span-12 md:col-span-6 lg:col-span-4 rounded-2xl bg-gradient-to-br from-energy-50/60 to-alert-50/40 border border-energy-100/50 p-4">
+              <div className="text-[13px] font-bold text-ink-800 mb-2">招募状态分布</div>
+              <div className="h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RePieChart>
+                    <Pie data={recruitStatus} dataKey="value" nameKey="name" innerRadius={42} outerRadius={68} paddingAngle={2}>
+                      {recruitStatus.map((e, i) => (<Cell key={i} fill={e.color} />))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.96)' }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+                  </RePieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="col-span-12 lg:col-span-4 rounded-2xl bg-gradient-to-br from-growth-50/60 to-mission-50/40 border border-growth-100/50 p-4">
+              <div className="text-[13px] font-bold text-ink-800 mb-2">班级规模（小组/学生）</div>
+              <div className="h-[180px] -mx-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={classScale} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} width={30} />
+                    <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.96)' }} />
+                    <Bar dataKey="小组" fill="#8B5CF6" radius={[4, 4, 0, 0]} barSize={16} />
+                    <Bar dataKey="学生" fill="#22C55E" radius={[4, 4, 0, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <motion.section
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
