@@ -40,7 +40,7 @@ import {
   X,
 } from 'lucide-react';
 import CollapsibleSection from '@/components/ui/CollapsibleSection';
-import { classesApi } from '@/lib/apiService';
+import { classesApi, safetyApi, SafetyRecord } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
 import type { User, Project, ProjectStatus } from '@/data/mockData';
 
@@ -505,6 +505,19 @@ export default function Dashboard() {
   const teamCoin5 = useCountUp(teamRanking[5]?.coins || 0);
   const statValues = classStats.map((s) => useCountUp(s.value, 1400 + classStats.indexOf(s) * 120));
 
+  // 安全记录 + TaskCard 真实进度
+  const [safetyRecords, setSafetyRecords] = useState<SafetyRecord[]>([]);
+  useEffect(() => { safetyApi.myRecords().then(setSafetyRecords).catch(() => {}); }, []);
+  const passedCats = new Set(safetyRecords.filter((r) => r.passed).map((r) => r.category)).size;
+  const pendingCats = Math.max(0, 6 - passedCats);
+  const frozenProjects = projects.filter((p) => p.status === 'frozen').length;
+  const myProjects = myGroup ? projects.filter((p) => p.ownerGroupId === myGroup.id) : [];
+  const avgProjectProgress = myProjects.length ? Math.round(myProjects.reduce((s, p) => s + p.progress, 0) / myProjects.length) : 0;
+  const safetyProgress = Math.round((passedCats / 6) * 100);
+  const wonChallengesCount = challenges.filter((c) => c.creatorGroupId === groupId && c.submissions?.some((s) => s.earned > 0)).length;
+  const challengeProgress = Math.min(100, wonChallengesCount * 20);
+  const projectReward = myProjects[0]?.rewardCoins || 0;
+
   return (
     <div className="w-full space-y-6">
       {/* ============ 待分配小组提示（仅未分组学生可见） ============ */}
@@ -594,16 +607,16 @@ export default function Dashboard() {
 
           <div className="relative flex gap-4 mt-6 overflow-x-auto scroll-thin pb-1">
             <div className="rounded-[20px] bg-gradient-to-br from-mission-50/80 via-white/95 to-nova-50/50 border border-mission-100/60 p-4">
-              <TaskCard onClick={() => { navigate('/theory/topics'); pushToast('进入 AI 自学中心 · 今天也加油 🚀', 'info'); }} icon={Brain} title="AI理论学习" progress={68} reward={80} status="进行中" tint="mission" />
+              <TaskCard onClick={() => { navigate('/theory/topics'); pushToast('进入 AI 自学中心 · 今天也加油 🚀', 'info'); }} icon={Brain} title="AI理论学习" progress={todayProgress} reward={0} status={todayProgress >= 80 ? '已解锁' : '进行中'} tint="mission" />
             </div>
             <div className="rounded-[20px] bg-gradient-to-br from-energy-50/80 via-white/95 to-alert-50/50 border border-energy-100/60 p-4">
-              <TaskCard onClick={() => { navigate('/projects'); pushToast('进入项目管理中心 · 任务已就绪', 'info'); }} icon={FlaskConical} title="项目研发" progress={72} reward={200} status="进行中" tint="energy" />
+              <TaskCard onClick={() => { navigate('/projects'); pushToast('进入项目管理中心 · 任务已就绪', 'info'); }} icon={FlaskConical} title="项目研发" progress={avgProjectProgress} reward={projectReward} status="进行中" tint="energy" />
             </div>
             <div className="rounded-[20px] bg-gradient-to-br from-growth-50/80 via-white/95 to-emerald-50/50 border border-growth-100/60 p-4">
-              <TaskCard onClick={() => { navigate('/safety-lab'); pushToast('进入安全实验中心 · 请完成待认证项目', 'info'); }} icon={ShieldCheck} title="安全认证" progress={100} reward={50} status="待认证" tint="growth" />
+              <TaskCard onClick={() => { navigate('/safety-lab'); pushToast('进入安全实验中心 · 请完成待认证项目', 'info'); }} icon={ShieldCheck} title="安全认证" progress={safetyProgress} reward={0} status={passedCats >= 6 ? '已解锁' : '待认证'} tint="growth" />
             </div>
             <div className="rounded-[20px] bg-gradient-to-br from-nova-50/80 via-white/95 to-mission-50/50 border border-nova-100/60 p-4">
-              <TaskCard onClick={() => { navigate('/theory/challenge'); pushToast('进入挑战大厅 · 准备好迎接知识挑战了吗？', 'info'); }} icon={Swords} title="挑战大厅" progress={0} reward={120} status="开放" tint="nova" />
+              <TaskCard onClick={() => { navigate('/theory/challenge'); pushToast('进入挑战大厅 · 准备好迎接知识挑战了吗？', 'info'); }} icon={Swords} title="挑战大厅" progress={challengeProgress} reward={0} status={wonChallengesCount > 0 ? '已解锁' : '开放'} tint="nova" />
             </div>
           </div>
         </div>
@@ -922,15 +935,15 @@ export default function Dashboard() {
 
                   <div className="grid grid-cols-3 gap-2 mt-4">
                     <div className="text-center p-2 rounded-xl bg-alert-50/70 border border-alert-100/60">
-                      <div className="text-[20px] font-black text-alert-600 tabular-nums leading-none">2</div>
+                      <div className="text-[20px] font-black text-alert-600 tabular-nums leading-none">{pendingCats}</div>
                       <div className="text-[9.5px] font-bold text-ink-500 uppercase mt-1">待认证</div>
                     </div>
                     <div className="text-center p-2 rounded-xl bg-growth-50/70 border border-growth-100/60">
-                      <div className="text-[20px] font-black text-growth-600 tabular-nums leading-none">18</div>
+                      <div className="text-[20px] font-black text-growth-600 tabular-nums leading-none">{passedCats}</div>
                       <div className="text-[9.5px] font-bold text-ink-500 uppercase mt-1">已完成</div>
                     </div>
                     <div className="text-center p-2 rounded-xl bg-danger-50/70 border border-danger-100/60">
-                      <div className="text-[20px] font-black text-danger-600 tabular-nums leading-none">1</div>
+                      <div className="text-[20px] font-black text-danger-600 tabular-nums leading-none">{frozenProjects}</div>
                       <div className="text-[9.5px] font-bold text-ink-500 uppercase mt-1">冻结</div>
                     </div>
                   </div>
