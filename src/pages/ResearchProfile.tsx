@@ -39,8 +39,9 @@ import { useGroupStore } from '@/store/groupStore';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTheoryStore } from '@/store/theoryStore';
+import { useQuestionBankStore } from '@/store/questionBankStore';
 import { useUIStore } from '@/store/uiStore';
-import { authApi } from '@/lib/apiService';
+import { authApi, safetyApi, SafetyRecord } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
 
 function useTicker(target: number, duration = 900) {
@@ -83,15 +84,6 @@ interface TimelineEvent {
 }
 
 
-const SKILL_RADAR = [
-  { skill: '理论基础', A: 92 },
-  { skill: '实验操作', A: 86 },
-  { skill: '出题能力', A: 78 },
-  { skill: '编程建模', A: 80 },
-  { skill: '安全规范', A: 95 },
-  { skill: '团队协作', A: 88 },
-];
-
 const SEMESTER_GOALS = [
   { id: 'g1', text: '完成 ≥ 3 个项目式学习课题', checked: true },
   { id: 'g2', text: '至少赢下 2 场对外知识挑战', checked: true },
@@ -111,6 +103,45 @@ export default function ResearchProfile() {
   const createdChallenges = challenges.filter((c) => c.creatorGroupId === me.groupId).length;
   const recruitHelps = recruitments.filter((r) => r.assigneeUserId === me.id && r.status === 'done').length;
   const personalCoins = me.personalCoins || 0;
+
+  const { questions: qbQuestions } = useQuestionBankStore();
+  const submittedQ = qbQuestions.filter((q) => q.submittedBy === me.id).length;
+  const [safetyRecords, setSafetyRecords] = useState<SafetyRecord[]>([]);
+  useEffect(() => {
+    safetyApi.myRecords().then(setSafetyRecords).catch(() => {});
+  }, []);
+  const safetyPassed = safetyRecords.filter((r) => r.passed).length;
+  const quizAvg = quizSessions.length ? Math.round(quizSessions.reduce((s, q) => s + q.score, 0) / quizSessions.length) : 0;
+  const quizHigh = quizSessions.some((q) => q.score >= 90);
+  const wonChallenges = challenges.filter((c) => c.creatorGroupId === me.groupId && c.submissions?.some((s) => s.earned > 0)).length;
+
+  const radar = useMemo(
+    () => [
+      { skill: '理论基础', A: Math.min(100, quizAvg || 60) },
+      { skill: '实验操作', A: Math.min(100, 40 + doneProjects * 20) },
+      { skill: '出题能力', A: Math.min(100, submittedQ * 25 + 40) },
+      { skill: '编程建模', A: Math.min(100, 45 + doneProjects * 10) },
+      { skill: '安全规范', A: Math.min(100, safetyPassed * 20 + 50) },
+      { skill: '团队协作', A: Math.min(100, recruitHelps * 20 + 45) },
+    ],
+    [quizAvg, doneProjects, submittedQ, safetyPassed, recruitHelps]
+  );
+  const badgeEarned = useMemo(() => {
+    const m: Record<string, boolean> = {
+      b1: safetyPassed > 0,
+      b2: submittedQ >= 1,
+      b3: doneProjects >= 1,
+      b4: (radar[3]?.A || 0) >= 60,
+      b5: quizHigh,
+      b6: recruitHelps >= 1,
+      b7: wonChallenges >= 1,
+      b8: recruitHelps >= 1,
+      b9: doneProjects >= 1,
+      b10: quizSessions.length >= 3,
+    };
+    return m;
+  }, [safetyPassed, submittedQ, doneProjects, radar, quizHigh, recruitHelps, wonChallenges, quizSessions]);
+  const earnedBadgeCount = BADGES.filter((b) => badgeEarned[b.id]).length;
   const timeline = useMemo(() => {
     const events: TimelineEvent[] = [];
     const dstr = (v: any) => { const d = v instanceof Date ? v : new Date(v); return `${d.getMonth() + 1}/${d.getDate()}`; };
@@ -298,11 +329,12 @@ export default function ResearchProfile() {
                 <div className="flex items-center gap-2 mb-3">
                   <Award size={15} className="text-alert-500" />
                   <span className="text-[13px] font-bold text-ink-800">徽章墙</span>
-                  <span className="text-[11px] text-ink-400 font-mono">10 / 24（演示数据）</span>
+                  <span className="text-[11px] text-ink-400 font-mono">{earnedBadgeCount} / 24</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {BADGES.map((b, i) => {
                     const Icon = b.icon;
+                    const earned = badgeEarned[b.id];
                     return (
                       <motion.div
                         key={b.id}
@@ -310,25 +342,28 @@ export default function ResearchProfile() {
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.35, delay: 0.15 + i * 0.04, type: 'spring' }}
                         className="relative group cursor-pointer"
-                        title={b.name}
+                        title={earned ? b.name : `${b.name} · 未获得`}
                       >
-                        <div className="absolute -inset-1 rounded-full bg-gradient-to-br opacity-30 blur-md group-hover:opacity-60 transition-opacity"
-                          style={{ backgroundImage: `linear-gradient(135deg, var(--tw-gradient-stops))` }}
-                        />
+                        {earned && (
+                          <div className="absolute -inset-1 rounded-full bg-gradient-to-br opacity-30 blur-md group-hover:opacity-60 transition-opacity"
+                            style={{ backgroundImage: `linear-gradient(135deg, var(--tw-gradient-stops))` }}
+                          />
+                        )}
                         <div className={cn(
                           'badge-ring relative w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg',
-                          'bg-gradient-to-br',
-                          b.grad
+                          earned
+                            ? cn('bg-gradient-to-br', b.grad)
+                            : 'bg-ink-200 text-ink-400 !shadow-none'
                         )}>
                           <Icon size={20} strokeWidth={2.2} />
                         </div>
                         <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap text-[10px] font-semibold text-ink-600 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                          {b.name}
+                          {b.name}{earned ? '' : ' · 未获得'}
                         </div>
                       </motion.div>
                     );
                   })}
-                  {Array.from({ length: 4 }).map((_, i) => (
+                  {Array.from({ length: Math.max(0, 14 - BADGES.length) }).map((_, i) => (
                     <div
                       key={`lock-${i}`}
                       className="w-12 h-12 rounded-full bg-ink-100 border-2 border-dashed border-ink-200 flex items-center justify-center text-ink-300"
@@ -417,7 +452,7 @@ export default function ResearchProfile() {
               </div>
               <div className="h-[300px] -mx-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={SKILL_RADAR} outerRadius="78%">
+                  <RadarChart data={radar} outerRadius="78%">
                     <defs>
                       <linearGradient id="radarFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#4F7CFF" stopOpacity={0.55} />
@@ -459,7 +494,7 @@ export default function ResearchProfile() {
                 </ResponsiveContainer>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
-                {SKILL_RADAR.map((s, i) => {
+                {radar.map((s, i) => {
                   const palette = ['#4F7CFF', '#FF8A34', '#22C55E', '#8B5CF6', '#F59E0B', '#06B6D4'];
                   const c = palette[i % 6];
                   return (
