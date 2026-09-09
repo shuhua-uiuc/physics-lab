@@ -13,10 +13,12 @@
  * 未启用后端时（apiEnabled=false），syncToApi 直接跳过，行为与原离线模式一致。
  */
 import { apiEnabled } from './apiClient';
+import { useUIStore } from '../store/uiStore';
 
 type Task = () => Promise<unknown>;
 
 let lastError: { at: number; message: string } | null = null;
+let lastToastAt = 0;
 
 export function getLastSyncError() {
   return lastError;
@@ -34,7 +36,12 @@ export function syncToApi(task: Task, label: string): void {
   void task().catch((err: any) => {
     const message = err?.message || String(err);
     lastError = { at: Date.now(), message: `${label}: ${message}` };
-    // 保留一条控制台告警，便于开发期发现前后端不一致
     console.warn(`[sync] ${label} 同步后端失败：`, message);
+    // 提示用户（节流，避免连发刷屏），让"表面改了但没入库"可见
+    const now = Date.now();
+    if (now - lastToastAt > 10000) {
+      lastToastAt = now;
+      useUIStore.getState().pushToast(`同步后端失败：${label}，请刷新或重试`, 'error');
+    }
   });
 }

@@ -6,7 +6,13 @@ export function reviveDates<T>(items: T[], dateKeys: string[]): T[] {
   return items.map((item) => {
     const clone: any = { ...item };
     for (const key of dateKeys) {
-      if (clone[key]) clone[key] = new Date(clone[key]);
+      const raw = clone[key];
+      if (!raw) continue;
+      // 后端 datetime 是"无时区后缀"的 naive UTC 字符串（如 2026-09-09T13:00:45）
+      // 追加 Z 按 UTC 解析，输出由 Date 按本地时区显示，避免 8 小时偏移。
+      clone[key] = new Date(
+        typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw) ? `${raw}Z` : raw
+      );
     }
     return clone;
   });

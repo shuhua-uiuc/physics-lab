@@ -95,6 +95,8 @@ function MissionHeader() {
   const groupId = useAuthStore((s) => s.groupId);
   const currentUser = userId && userId !== 'teacher' && userId !== 'admin' ? getUserById(userId) : undefined;
   const currentGroup = groupId ? getGroupById(groupId) : undefined;
+  const coreCoins = currentGroup?.totalCoins || 0;
+  const level = Math.max(1, Math.min(12, Math.floor(Math.log10(Math.max(1, coreCoins)) * 2)));
 
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('');
@@ -166,7 +168,7 @@ function MissionHeader() {
             <Zap size={18} className="text-energy-500 relative z-10 fill-energy-400/30" />
           </div>
           <div className="text-[16px] font-extrabold text-gradient-energy leading-none tabular-nums">
-            {currentGroup?.totalCoins ?? 3650}
+            {coreCoins}
           </div>
           <div className="text-[10px] text-ink-400 font-medium">⚡CORE</div>
         </div>
@@ -193,7 +195,7 @@ function MissionHeader() {
             )}
           </div>
           <div className="chip-nova !py-1 !px-2.5 flex items-center gap-1">
-            <span className="text-[10px] font-black tracking-wider">LV8</span>
+            <span className="text-[10px] font-black tracking-wider">LV{level}</span>
             <span className="text-[11px] font-semibold">Researcher</span>
           </div>
         </div>
