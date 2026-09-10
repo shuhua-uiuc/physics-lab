@@ -406,7 +406,7 @@ export default function Dashboard() {
 
   // --- 真实数据派生（替换 mock）---
   const DAY = 86400000;
-  const myCoins = myGroup?.totalCoins || 0;
+  const myCoins = Math.max(0, myGroup?.totalCoins || 0);
   const levelOf = (coins: number) => Math.max(1, Math.min(12, Math.floor(Math.log10(Math.max(1, coins)) * 2)));
   const sumDelta = (since: number) =>
     coinTxs

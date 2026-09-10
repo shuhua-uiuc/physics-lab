@@ -95,7 +95,7 @@ function MissionHeader() {
   const groupId = useAuthStore((s) => s.groupId);
   const currentUser = userId && userId !== 'teacher' && userId !== 'admin' ? getUserById(userId) : undefined;
   const currentGroup = groupId ? getGroupById(groupId) : undefined;
-  const coreCoins = currentGroup?.totalCoins || 0;
+  const coreCoins = Math.max(0, currentGroup?.totalCoins || 0);
   const level = Math.max(1, Math.min(12, Math.floor(Math.log10(Math.max(1, coreCoins)) * 2)));
 
   const [showAvatarModal, setShowAvatarModal] = useState(false);
