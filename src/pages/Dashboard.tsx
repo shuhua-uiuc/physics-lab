@@ -769,11 +769,11 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="p-3 rounded-xl bg-growth-50/60 border border-growth-100/60">
                   <div className="text-[10px] font-bold text-ink-500 uppercase">今日</div>
-                  <div className="text-[18px] font-black text-growth-600 tabular-nums mt-0.5">+{coinToday}</div>
+                  <div className="text-[18px] font-black text-growth-600 tabular-nums mt-0.5">{coinToday >= 0 ? `+${coinToday}` : coinToday}</div>
                 </div>
                 <div className="p-3 rounded-xl bg-nova-50/60 border border-nova-100/60">
                   <div className="text-[10px] font-bold text-ink-500 uppercase">本周</div>
-                  <div className="text-[18px] font-black text-nova-600 tabular-nums mt-0.5">+{coinWeek}</div>
+                  <div className="text-[18px] font-black text-nova-600 tabular-nums mt-0.5">{coinWeek >= 0 ? `+${coinWeek}` : coinWeek}</div>
                 </div>
               </div>
               <div className="p-3.5 rounded-xl bg-gradient-to-br from-mission-50/70 to-nova-50/60 border border-mission-100/60">
