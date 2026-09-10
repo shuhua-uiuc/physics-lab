@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概况
 
-物理实验室（Physics Mission Control）——面向高中物理教学的**游戏化沉浸式学习平台**。三种角色：**学生**（`/dashboard`，布局 `MissionShell`）、**教师**（`/teacher/overview`，布局 `AppShell` 含 5 个侧边栏项）、**管理员**（`/admin`）。深度设计细节在 `docs/DESIGN.md`（权威文档；当代码与文档不一致时以代码为准并同步更新它）。
+物理实验室（Physics Mission Control）——面向高中物理教学的**游戏化沉浸式学习平台**。三种角色：**学生**（`/dashboard`）、**教师**（`/teacher/overview`）、**管理员**（`/admin`），三者路由**都挂在同一个布局 `MissionShell`** 上（`AppShell`/`Sidebar`/`Topbar` 已不存在）。教师路由有 6 个：overview / groups / projects / roster / question-bank / safety。深度设计细节在 `docs/DESIGN.md`（权威文档；当代码与文档不一致时以代码为准并同步更新它）。
 
 单仓库：根目录为 Vite React 前端，`backend/` 为 FastAPI 后端。
 
@@ -27,7 +27,7 @@ cd backend
 .venv/bin/python -m pytest "tests/test_projects.py::test_update_project_partial_fields_keep_others" -q   # 单个测试
 ```
 
-默认账号：教师 `teacher`/`teacher123`，管理员 `admin`，学生默认 `student123`。可通过 `backend/.env`（`TEACHER_PASSWORD`/`ADMIN_PASSWORD`/`STUDENT_DEFAULT_PASSWORD`）或 `backend/app/config.py` 中的环境变量覆盖。
+登录名：教师 `teacher`、管理员 `admin`、学生 `u-01` 起（实际名单见启动时种子输出）。**密码不要从本文档推断**——按加载来源优先级为：本地跑 → `backend/.env`；Docker 部署 → 仓库根 `.env`；两者都没配 → `backend/app/config.py` 的兜底默认值（`TEACHER_PASSWORD`/`ADMIN_PASSWORD`/`STUDENT_DEFAULT_PASSWORD`）。改密只需改对应 `.env` 并重启后端。
 
 ## 架构
 
@@ -55,5 +55,11 @@ Tailwind + 语义色 token（`mission/energy/growth/nova/alert/danger/ink`）。
 - `coinTxs` 必须**时间正序**存储；展示"最近 N 条"用 `reverse` + `slice`。
 - **后端测试必须用 `backend/.venv/bin/python`**（系统 Python 缺依赖）。
 - 改 `schemas.py`/`models.py` 后需重启 uvicorn（dev 服务器未开 `--reload`）；重启若 `jwt_secret` 变更会使旧 token 失效。
-- 挑战大厅路由是 `/theory/challenges`（带 `s`），旧拼写 `/theory/challenge` 已废弃。
-- 部分页面已不再挂载（`src/pages/Home.tsx`、`TheoryTopics.tsx`、`CoinRank.tsx`、`Showcase.tsx`、`GroupCenter.tsx`、`ProjectKanban.tsx`、`RecruitMarket.tsx`，以及 `AppShell`/`Sidebar`/`Topbar`）。改导航前先查 `src/App.tsx` 确认真正挂载的路由。
+- `/theory/challenge`（无 `s`）和 `/theory/challenges`（带 `s`）**是两个不同页面，都还挂着**：前者渲染 `KnowledgeGalaxy`（知识星系），后者渲染 `TheoryChallenge`（挑战大厅）。不是新旧拼写关系。
+- **判断页面是否被使用，不能只 grep `src/App.tsx`**——页面之间会互相引用（如 `ClassComposition.tsx` 由 `AdminConsole.tsx` 以 tab 形式内嵌，不经过路由）。要删页面先全仓库 grep 组件名，否则会误删。
+- 改导航/路由前先读 `src/App.tsx`（唯一路由表）；`src/pages/` 里可能留有没被任何路由引用的文件。
+- 后端测试共 **61 个用例**，`pytest tests/ -q` 约 1 秒跑完，改完随手跑一次很划算。
+
+## 部署
+
+见 `DEPLOY.md`。要点：Docker Compose 双服务（`web` 用 nginx 托管 `dist` 并**同源代理 `/api` 到 backend**，因此不涉及 CORS）；`VITE_API_BASE_URL` 是**构建期烘焙**进前端的，改端口/域名/IP 必须 `docker compose up -d --build` 重建，否则前端连不上后端。首次启动由 `docker-entrypoint.sh` 跑幂等的 `python -m app.seed`。

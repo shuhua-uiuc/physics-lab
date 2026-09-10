@@ -1,7 +1,7 @@
 # 物理实验室（Physics Mission Control）设计文档
 
 > 本文档是项目的**唯一权威设计文档**，供后续 Agent / 开发者快速理解全貌并继续开发。
-> 最后更新：2026-09-06。如代码与本文档冲突，以代码为准并请同步更新本文档。
+> 最后更新：2026-09-10。如代码与本文档冲突，以代码为准并请同步更新本文档。
 
 ---
 
@@ -42,7 +42,7 @@
 - SQLAlchemy ORM + SQLite（`backend/physics_lab.db`）
 - 鉴权：python-jose（JWT，HS256，有效期 12h）+ bcrypt 密码哈希
 - 配置：pydantic-settings（`backend/.env` 或环境变量覆盖）
-- 测试：pytest（`backend/tests/`，35+ 用例）
+- 测试：pytest（`backend/tests/`，61 个用例，4 个文件）
 
 ---
 
@@ -73,8 +73,7 @@ Physics_lab/
 │   │   ├── syncQueue.ts         # 离线写操作队列（乐观更新 + 后台同步）
 │   │   └── utils.ts             # cn() 等工具
 │   ├── components/
-│   │   ├── layout/MissionShell.tsx  # 学生端主框架（侧边栏+顶栏+通知铃铛）
-│   │   ├── layout/AppShell.tsx      # 教师端主框架（教师专属侧边栏 5 项）
+│   │   ├── layout/MissionShell.tsx  # 全局唯一布局（学生/教师/管理员共用；含侧边栏+顶栏+通知铃铛）
 │   │   ├── ui/                  # Checkbox/CoinBadge/Dialog/ProgressRing/StatCard…
 │   │   └── project/             # KanbanColumn/Timeline 等项目页组件
 │   └── pages/                   # 见 §6 页面清单
@@ -85,9 +84,9 @@ Physics_lab/
 │   │   ├── config.py            # Settings（jwt_secret、默认密码、cors_origins…）
 │   │   ├── database.py          # SQLAlchemy engine/SessionLocal/Base
 │   │   ├── deps.py              # get_db / get_current_user / 角色依赖
-│   │   ├── models.py            # 12 张表的 ORM 模型
+│   │   ├── models.py            # 13 张表的 ORM 模型
 │   │   ├── schemas.py           # Pydantic 请求/响应模型（camelCase 序列化）
-│   │   └── routers/             # auth/groups/classes/projects/coins/theory/admin
+│   │   └── routers/             # auth/admin/groups/theory/projects/coins（6 个）
 │   ├── tests/                   # pytest（test_auth/test_groups/test_coins/test_projects）
 │   ├── requirements.txt / requirements-dev.txt
 │   └── physics_lab.db           # SQLite 数据文件
@@ -116,8 +115,8 @@ cd backend
 # 未配置时自动降级为离线模式（localStorage 种子数据，见 §8）。
 ```
 
-**默认账号**（生产环境请改密）：教师 `teacher`、管理员 `admin`；学生默认密码 `student123`。
-密码可在 `backend/.env` 覆盖（`TEACHER_PASSWORD` / `ADMIN_PASSWORD` / `STUDENT_DEFAULT_PASSWORD`）。
+**默认账号**（生产环境请改密）：登录名 教师 `teacher`、管理员 `admin`、学生 `u-01` 起。
+密码按加载来源决定：本地跑读 `backend/.env`，Docker 部署读仓库根 `.env`，都没有则回退 `backend/app/config.py` 默认值（`TEACHER_PASSWORD` / `ADMIN_PASSWORD` / `STUDENT_DEFAULT_PASSWORD`）。改密后重启后端生效。
 
 ---
 
@@ -161,35 +160,40 @@ cd backend
 
 | 路径 | 页面文件 | 说明 |
 |---|---|---|
-| `/dashboard` | Dashboard.tsx | 学生主控台（教师/管理员访问自动重定向到各自入口） |
-| `/theory/topics` | TheoryTopics.tsx | 知识星系/学习路径（阶段进度按 completedTasks 动态计算） |
-| `/theory/quiz/:sessionId` | QuizPage.tsx | 章节测验 |
+| `/dashboard` | Dashboard.tsx | 主控台（教师/管理员访问自动重定向到各自入口） |
+| `/theory/topics` | LearningHub.tsx | 知识星系/学习路径（阶段进度按 completedTasks 动态计算） |
+| `/theory/quiz/:sessionId` | QuizPage.tsx（`mode="quiz"`） | 章节测验 |
+| `/theory/challenge` | KnowledgeGalaxy.tsx | 知识星系挑战入口 |
+| `/theory/challenge/:id/accept` | QuizPage.tsx（`mode="challenge"`） | 接受挑战 |
 | `/theory/challenges` | TheoryChallenge.tsx | 挑战大厅 + "我的题目"（学生提交题 + 查看审核反馈） |
-| `/theory/challenge/:id/accept` | TheoryChallenge.tsx | 接受挑战 |
 | `/projects` | ProjectCenter.tsx | 项目中心（看板） |
-| `/projects/:id/safety` | SafetyLab.tsx | 项目安全考核入口 |
-| `/safety-exam/:category` | SafetyExam.tsx | 安全认证考试（读 safetyStore） |
-| `/projects/:id/recruit/:rid` | ProjectCenter 相关 | 招募投标详情 |
+| `/projects/:id/safety` | SafetyExam.tsx | 项目安全考核入口 |
+| `/safety-lab` | SafetyLab.tsx | 安全实验室 |
+| `/safety-exam/:category` | SafetyExam.tsx | 安全认证考试 |
+| `/projects/:id/recruit/:rid` | ResearchMarketplace.tsx | 招募投标详情 |
 | `/recruit/market` | ResearchMarketplace.tsx | 招募市场 |
-| `/coins` | CoinRank.tsx | 能量币/排行榜与流水 |
+| `/coins` | ResearchLeague.tsx | 能量币/排行榜与流水 |
 | `/showcase` | AchievementHall.tsx | 成就殿堂（分类 tab 动态过滤） |
 | `/communicator` | GroupCommunicator.tsx | 小组通讯（挑战系统、专家招募、能量币转账） |
 | `/profile` | ResearchProfile.tsx | 个人资料 |
 | `/login` | Login.tsx | 登录/注册 |
 
-教师端（`AppShell` 侧边栏 5 项）：
+重定向路由：`/` → `/dashboard`；`/theory/topics/:id` → `/theory/topics`；`/projects/:id` → `/projects`；`/group` → `/communicator`；未匹配 → NotFound。
+
+> `/theory/challenge`（无 `s`）与 `/theory/challenges`（带 `s`）是**两个不同页面**，都在使用，不是新旧拼写关系。
+
+教师端（`MissionShell`，侧边栏 6 项）：
 
 | 路径 | 页面文件 | 说明 |
 |---|---|---|
 | `/teacher/overview` | TeacherOverview.tsx | 指挥总控台（见 §6.1） |
 | `/teacher/groups` | TeacherGroups.tsx | 分组管理（按班级分区，组内按能量币降序；建组/分配/改名） |
+| `/teacher/projects` | TeacherProjects.tsx | 项目管理（审批/冻结/编辑项目） |
 | `/teacher/roster` | StudentRoster.tsx | 学生名册（按班级分区展示、按班级批量选择） |
 | `/teacher/question-bank` | TeacherQuestionBank.tsx | 题库审核中心（学生提交审核 + 教师上传/导入/导出） |
 | `/teacher/safety` | TeacherSafety.tsx | 安全题库维护（增删改、JSON 批量导入/导出、恢复内置 35 题） |
 
-管理员端：`/admin` → AdminConsole.tsx（班级、教师账户、学生账户管理）。
-
-> 注意：`/theory/challenge`（无 s）是旧拼写，已统一为 `/theory/challenges`。
+管理员端：`/admin` → AdminConsole.tsx（班级、教师账户、学生账户管理；`ClassComposition.tsx` 由它以 tab 形式内嵌，不单独占路由）。
 
 ### 6.1 教师总览页数据来源（TeacherOverview.tsx，已全部真实化）
 
@@ -281,7 +285,7 @@ cd backend
 ### 8.4 后端分层
 - `deps.py`：`get_db`（请求级 Session）、`get_current_user`（解 JWT）、角色依赖（teacher/admin）。
 - `schemas.py`：Pydantic 模型，配置 `alias_generator`/`populate_by_name` 实现 camelCase 出入参。
-- `models.py`：12 张表 —— classes、groups、users、coin_transactions、topics、questions、quiz_sessions、challenges、projects、recruitments、showcase_items、class_meta。
+- `models.py`：13 张表 —— classes、groups、users、coin_transactions、topics、questions、quiz_sessions、challenges、projects、recruitments、showcase_items、class_meta、safety_records。
 - `main.py`：CORS（默认允许 5173/5174）、启动时建表并灌入种子数据（教师/管理员账户、班级、示例小组与题目）。
 
 ---
@@ -289,7 +293,7 @@ cd backend
 ## 9. 后端测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q
+cd backend && .venv/bin/python -m pytest tests/ -q     # 61 个用例，约 1 秒
 ```
 - `tests/test_auth.py`：注册/登录/鉴权
 - `tests/test_groups.py`：建组/加入/改名/分配
@@ -359,12 +363,12 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 
 | 项 | 现状 | 下一步 |
 |---|---|---|
-| 安全题库多端共享 | safetyStore 仅 localStorage | 建后端题库表 + CRUD 端点（参考 questionBank 流程） |
+| 安全题库多端共享 | 题库仍在 `safetyStore`（localStorage）；但考试记录 `safety_records` 已接后端（`POST/GET /api/safety/records`，见 SafetyLab/ResearchProfile/Dashboard） | 建后端题库表 + CRUD 端点（参考 questionBank 流程） |
 | 题库审核多端共享 | questionBankStore 仅 localStorage + 种子数据 | 后端建 review_questions 表；学生提交→教师审核全链路持久化 |
 | 题目示意图 | 学生/教师提交题无 image 字段 | ReviewableQuestion 增加可选 imageUrl |
 | 冻结项目原因/冻结天数 | 后端 Project 无 freezeReason/frozenAt | 加字段与教师冻结操作端点 |
 | 超时招募自动结算 | 前端仅预警展示 | 加定时/管理员触发的自动 resolve 逻辑 |
-| 导出 CSV | 教师总览按钮为 toast 占位 | 实现流水 CSV 导出 |
+| 导出 CSV | 能量币趋势/招募状态/班级规模已实现（`downloadCSV`）；流水导出仍是 toast 占位（TeacherOverview.tsx:620） | 补齐流水 CSV 导出 |
 | 小组头像/学生头像 | 仅本地 avatar 字段 | 头像上传后端存储 |
 
 ---
@@ -372,12 +376,13 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 ## 13. 常见坑（经验教训）
 
 1. **刷新后数据消失**：只调 `initAuth()` 不会恢复分组/学生数据，必须 `bootstrapFromApi()`。
-2. **教师端看不到管理入口**：教师侧边栏与学生不同，5 个菜单项在 AppShell；新教师页面务必同时加入侧边栏。
+2. **教师端看不到管理入口**：教师与学生共用 `MissionShell`，但侧边栏项按角色不同（教师 6 项）；新教师页面务必同时加入侧边栏。
 3. **流水顺序错**：coinTxs 必须时间正序存储，取最近记录用 reverse+slice。
 4. **教师看到学生通知**：toast 必须按角色生成，禁止写死一套消息。
 5. **未定义色名**导致文字不可读：只用 tailwind.config 中定义的语义色。
 6. **进度/状态写死**导致 UI 联动断裂：一切进度由 completedTasks/projects 状态实时计算。
 7. **后端测试缺依赖**：务必用 `backend/.venv/bin/python`。
 8. **重启后端**会使旧 token 失效（jwt_secret 变更时）；改 schemas/models 后需重启 uvicorn（未开 --reload）。
-9. **旧路由拼写**：挑战大厅是 `/theory/challenges`（带 s）。
-10. **图片资源**：需要生成图片时使用内置 text_to_image API URL，不用占位图。
+9. **两个 challenge 路由别混淆**：`/theory/challenge`（无 s）渲染 `KnowledgeGalaxy`；`/theory/challenges`（带 s）渲染 `TheoryChallenge`（挑战大厅）。两者都在使用。改路由前读 `src/App.tsx`。
+10. **判断页面是否被使用别只看 `src/App.tsx`**：页面之间会互相引用（`ClassComposition.tsx` 由 `AdminConsole.tsx` 内嵌为 tab，不占路由）。删页面前全仓库 grep 组件名。
+11. **图片资源**：需要生成图片时使用内置 text_to_image API URL，不用占位图。
