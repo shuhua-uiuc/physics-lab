@@ -69,6 +69,7 @@ export default function TeacherGroups() {
   const assignUserGroup = useGroupStore((s) => s.assignUserGroup);
   const updateGroupCoins = useGroupStore((s) => s.updateGroupCoins);
   const adjustUserCoins = useGroupStore((s) => s.adjustUserCoins);
+  const resetAllGroupCoins = useGroupStore((s) => s.resetAllGroupCoins);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -175,7 +176,7 @@ export default function TeacherGroups() {
   };
 
   const confirmResetAll = () => {
-    groups.forEach((g) => updateGroupCoins(g.id, globalCoins - g.totalCoins));
+    resetAllGroupCoins(globalCoins);
     flashToast(`✔ 全部 ${groups.length} 个小组能量币已重置为 ⚡ ${globalCoins}`);
     setResetConfirmStep(0);
     setDialog(null);

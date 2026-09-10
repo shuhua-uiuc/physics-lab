@@ -7,6 +7,7 @@ from ..models import Class, CoinTransaction, Group, User
 from ..schemas import (
     ClassOut,
     ContributionUpdate,
+    GroupCoinsReset,
     GroupCreate,
     GroupOut,
     GroupRename,
@@ -70,6 +71,20 @@ def create_group(payload: GroupCreate, db: Session = Depends(get_db), _: User = 
     db.commit()
     db.refresh(group)
     return group
+
+
+@router.post("/groups/reset-coins")
+def reset_all_group_coins(
+    payload: GroupCoinsReset,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """批量重置所有小组能量币为目标值（基线重置，不产生逐组"扣除"流水）。"""
+    groups = db.query(Group).all()
+    for g in groups:
+        g.total_coins = payload.targetCoins
+    db.commit()
+    return {"ok": True, "count": len(groups), "targetCoins": payload.targetCoins}
 
 
 @router.patch("/groups/{group_id}", response_model=GroupOut)

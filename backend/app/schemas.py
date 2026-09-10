@@ -45,6 +45,12 @@ class UserCoinAdjust(BaseModel):
     note: str | None = None
 
 
+class GroupCoinsReset(BaseModel):
+    """批量重置所有小组能量币为目标值（基线重置，不产生逐组流水）。"""
+
+    targetCoins: int = Field(ge=0, le=1_000_000)
+
+
 class SafetyRecordCreate(BaseModel):
     """提交一次安全科目考核结果。"""
 

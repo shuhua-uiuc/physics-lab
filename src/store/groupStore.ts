@@ -28,6 +28,8 @@ interface GroupState {
   updateGroupCoins: (groupId: string, delta: number) => number;
   /** 仅本地余额变更，不触发后端同步（用于转账等由后端业务端点统一记账的场景）。 */
   adjustGroupCoinsLocal: (groupId: string, delta: number) => number;
+  /** 批量重置所有小组能量为目标值（基线重置，不写逐组流水）。 */
+  resetAllGroupCoins: (targetCoins: number) => void;
   updateUserPersonalCoins: (userId: string, delta: number) => void;
   /** 教师调整某学生个人能量币：乐观更新 + 同步后端（后端同时记录团队流水）。 */
   adjustUserCoins: (userId: string, delta: number, note?: string) => void;
@@ -192,6 +194,14 @@ export const useGroupStore = create<GroupState>((set, get) => {
       persistAll(nextGroups, users, classMeta);
       set({ groups: nextGroups });
       return newBalance;
+    },
+
+    resetAllGroupCoins: (targetCoins) => {
+      const { groups, users, classMeta } = get();
+      const nextGroups = groups.map((g) => ({ ...g, totalCoins: targetCoins }));
+      persistAll(nextGroups, users, classMeta);
+      set({ groups: nextGroups });
+      syncToApi(() => groupsApi.resetCoins(targetCoins), 'groups.resetCoins');
     },
 
     updateUserPersonalCoins: (userId, delta) => {

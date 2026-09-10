@@ -111,3 +111,15 @@ def test_student_cannot_adjust_personal_coins(client, auth):
 def test_adjust_personal_coins_zero_rejected(client, auth):
     resp = client.post("/api/users/u-1/coins", json={"delta": 0}, headers=auth("teacher", "teacher123"))
     assert resp.status_code == 400
+
+
+def test_teacher_reset_all_group_coins(client, auth):
+    resp = client.post("/api/groups/reset-coins", json={"targetCoins": 300}, headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 200
+    resp = client.get("/api/groups", headers=auth("teacher", "teacher123"))
+    assert all(g["totalCoins"] == 300 for g in resp.json())
+
+
+def test_student_cannot_reset_group_coins(client, auth):
+    resp = client.post("/api/groups/reset-coins", json={"targetCoins": 300}, headers=auth("u-1"))
+    assert resp.status_code == 403

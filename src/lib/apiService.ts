@@ -68,6 +68,8 @@ export const groupsApi = {
     api.put<{ ok: boolean }>(`/api/groups/${groupId}/leader/${userId}`),
   adjustCoins: (groupId: string, delta: number) =>
     api.post<{ balanceAfter: number }>(`/api/groups/${groupId}/coins`, { delta }),
+  resetCoins: (targetCoins: number) =>
+    api.post<{ ok: boolean; count: number; targetCoins: number }>('/api/groups/reset-coins', { targetCoins }),
   join: (groupId: string) => api.post<User>(`/api/groups/${groupId}/join`),
 };
 
