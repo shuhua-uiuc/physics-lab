@@ -277,7 +277,12 @@ def adjust_user_coins(
     if payload.delta == 0:
         raise HTTPException(status_code=400, detail="调整数量不能为 0")
     u.personal_coins = max(0, u.personal_coins + payload.delta)
-    # 团队流水记录：注明是某成员的个人能量变动（不改变小组总能量）
+    # 让小组总能量随成员个人能量同步变化（团队总能量 = 成员能量之和的口径）
+    if u.group_id:
+        group = db.get(Group, u.group_id)
+        if group is not None:
+            group.total_coins = max(0, group.total_coins + payload.delta)
+    # 团队流水记录：注明是某成员的个人能量变动
     if u.group_id:
         db.add(
             CoinTransaction(

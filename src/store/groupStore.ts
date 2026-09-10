@@ -216,11 +216,16 @@ export const useGroupStore = create<GroupState>((set, get) => {
 
     adjustUserCoins: (userId, delta, note) => {
       const { groups, users, classMeta } = get();
+      const target = users.find((u) => u.id === userId);
       const nextUsers = users.map((u) =>
         u.id === userId ? { ...u, personalCoins: Math.max(0, u.personalCoins + delta) } : u
       );
-      persistAll(groups, nextUsers, classMeta);
-      set({ users: nextUsers });
+      // 小组总能量随成员个人能量同步变化
+      const nextGroups = target?.groupId
+        ? groups.map((g) => (g.id === target.groupId ? { ...g, totalCoins: Math.max(0, g.totalCoins + delta) } : g))
+        : groups;
+      persistAll(nextGroups, nextUsers, classMeta);
+      set({ users: nextUsers, groups: nextGroups });
       syncToApi(() => usersApi.adjustCoins(userId, delta, note), 'users.adjustCoins');
     },
 

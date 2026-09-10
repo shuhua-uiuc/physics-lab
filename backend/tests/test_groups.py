@@ -90,14 +90,17 @@ def test_delete_group_unassigns_members(client, auth, db):
 
 
 def test_teacher_adjust_student_personal_coins(client, auth, db):
-    from app.models import User, CoinTransaction
+    from app.models import User, CoinTransaction, Group
 
+    before = db.get(Group, "g-1").total_coins
     # u-1 属 g-1，初始个人币 0
     resp = client.post("/api/users/u-1/coins", json={"delta": 30}, headers=auth("teacher", "teacher123"))
     assert resp.status_code == 200
     assert resp.json()["personalCoins"] == 30
     db.expire_all()
     assert db.get(User, "u-1").personal_coins == 30
+    # 小组总能量随成员个人能量同步 +30
+    assert db.get(Group, "g-1").total_coins == before + 30
     # 小组流水记录了该成员的个人变动
     txs = db.query(CoinTransaction).filter(CoinTransaction.user_id == "u-1").all()
     assert any(t.delta == 30 and t.group_id == "g-1" for t in txs)
