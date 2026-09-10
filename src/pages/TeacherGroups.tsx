@@ -68,6 +68,7 @@ export default function TeacherGroups() {
   const setLeader = useGroupStore((s) => s.setLeader);
   const assignUserGroup = useGroupStore((s) => s.assignUserGroup);
   const updateGroupCoins = useGroupStore((s) => s.updateGroupCoins);
+  const adjustUserCoins = useGroupStore((s) => s.adjustUserCoins);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -78,6 +79,9 @@ export default function TeacherGroups() {
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
   const [coinAmount, setCoinAmount] = useState(100);
   const [coinMode, setCoinMode] = useState<'add' | 'sub'>('add');
+  const [memberCoinTarget, setMemberCoinTarget] = useState<User | null>(null);
+  const [memberCoinAmount, setMemberCoinAmount] = useState(20);
+  const [memberCoinMode, setMemberCoinMode] = useState<'add' | 'sub'>('add');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const flashToast = (m: string) => {
@@ -945,6 +949,13 @@ export default function TeacherGroups() {
                               </div>
                               <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
                             </div>
+                            <button
+                              onClick={() => setMemberCoinTarget(u)}
+                              className="btn-ghost !py-1.5 !px-2.5 !text-[11px] !rounded-lg"
+                              title="调整个人能量币"
+                            >
+                              <Coins size={12} /> 调币
+                            </button>
                             {u.role !== 'leader' && (
                               <button
                                 onClick={() => makeLeader(u.id)}
@@ -1049,6 +1060,47 @@ export default function TeacherGroups() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* 调整个人能量币 */}
+      {memberCoinTarget && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4" onClick={() => setMemberCoinTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white"><Coins size={20} /></div>
+              <div>
+                <h3 className="font-extrabold text-[17px] text-ink-900">⚡ 调整个人能量币</h3>
+                <p className="text-[12px] text-ink-500">
+                  {memberCoinTarget.name} · 当前 <b className="text-energy-600">⚡ {memberCoinTarget.personalCoins}</b>
+                </p>
+              </div>
+              <button onClick={() => setMemberCoinTarget(null)} className="ml-auto w-8 h-8 rounded-lg hover:bg-ink-100 flex items-center justify-center text-ink-400"><X size={16} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mb-4">
+              <button onClick={() => setMemberCoinMode('add')} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'add' ? 'bg-growth-50 border-growth-400 text-growth-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Plus size={15} />增加</button>
+              <button onClick={() => setMemberCoinMode('sub')} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'sub' ? 'bg-danger-50 border-danger-400 text-danger-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Minus size={15} />扣除</button>
+            </div>
+            <label className="text-[12px] font-bold text-ink-600 mb-1.5 flex items-center justify-between">
+              <span>{memberCoinMode === 'add' ? '增加' : '扣除'}数量 (⚡)</span>
+              <span className={cn('font-extrabold tabular-nums', memberCoinMode === 'add' ? 'text-growth-700' : 'text-danger-700')}>{memberCoinMode === 'add' ? '+' : '-'}{memberCoinAmount}</span>
+            </label>
+            <input type="number" min={1} className="input w-full mb-5" value={memberCoinAmount} onChange={(e) => setMemberCoinAmount(Math.max(1, Number(e.target.value) || 1))} />
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={() => setMemberCoinTarget(null)}>取消</button>
+              <button
+                className={cn('flex-1 py-2.5 rounded-xl font-semibold text-white', memberCoinMode === 'add' ? 'bg-gradient-to-br from-growth-400 to-growth-600' : 'bg-gradient-to-br from-danger-400 to-danger-600')}
+                onClick={() => {
+                  const delta = memberCoinMode === 'add' ? memberCoinAmount : -memberCoinAmount;
+                  adjustUserCoins(memberCoinTarget.id, delta);
+                  flashToast(`${memberCoinMode === 'add' ? '+' : '-'}${memberCoinAmount} ⚡ → ${memberCoinTarget.name}（个人）`);
+                  setMemberCoinTarget(null);
+                }}
+              >
+                确认{memberCoinMode === 'add' ? '增加' : '扣除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MissionShell>
   );
 }

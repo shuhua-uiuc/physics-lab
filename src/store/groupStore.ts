@@ -29,6 +29,8 @@ interface GroupState {
   /** 仅本地余额变更，不触发后端同步（用于转账等由后端业务端点统一记账的场景）。 */
   adjustGroupCoinsLocal: (groupId: string, delta: number) => number;
   updateUserPersonalCoins: (userId: string, delta: number) => void;
+  /** 教师调整某学生个人能量币：乐观更新 + 同步后端（后端同时记录团队流水）。 */
+  adjustUserCoins: (userId: string, delta: number, note?: string) => void;
   updateUserAvatar: (userId: string, avatar: string) => void;
   getGroupUsers: (groupId: string) => User[];
   getUserById: (userId: string) => User | undefined;
@@ -200,6 +202,16 @@ export const useGroupStore = create<GroupState>((set, get) => {
       persistAll(groups, nextUsers, classMeta);
       set({ users: nextUsers });
       // 后端个人币变动由“组内金币结算/结算流程”统一记账，此处无独立端点，仅本地乐观更新。
+    },
+
+    adjustUserCoins: (userId, delta, note) => {
+      const { groups, users, classMeta } = get();
+      const nextUsers = users.map((u) =>
+        u.id === userId ? { ...u, personalCoins: Math.max(0, u.personalCoins + delta) } : u
+      );
+      persistAll(groups, nextUsers, classMeta);
+      set({ users: nextUsers });
+      syncToApi(() => usersApi.adjustCoins(userId, delta, note), 'users.adjustCoins');
     },
 
     updateUserAvatar: (userId, avatar) => {

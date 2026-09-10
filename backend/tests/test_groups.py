@@ -87,3 +87,27 @@ def test_delete_group_unassigns_members(client, auth, db):
     users = {u.id: u for u in db.query(User).filter(User.id.in_(["u-1", "u-2"])).all()}
     assert users["u-1"].group_id is None
     assert users["u-2"].group_id is None
+
+
+def test_teacher_adjust_student_personal_coins(client, auth, db):
+    from app.models import User, CoinTransaction
+
+    # u-1 属 g-1，初始个人币 0
+    resp = client.post("/api/users/u-1/coins", json={"delta": 30}, headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 200
+    assert resp.json()["personalCoins"] == 30
+    db.expire_all()
+    assert db.get(User, "u-1").personal_coins == 30
+    # 小组流水记录了该成员的个人变动
+    txs = db.query(CoinTransaction).filter(CoinTransaction.user_id == "u-1").all()
+    assert any(t.delta == 30 and t.group_id == "g-1" for t in txs)
+
+
+def test_student_cannot_adjust_personal_coins(client, auth):
+    resp = client.post("/api/users/u-2/coins", json={"delta": 50}, headers=auth("u-1"))
+    assert resp.status_code == 403
+
+
+def test_adjust_personal_coins_zero_rejected(client, auth):
+    resp = client.post("/api/users/u-1/coins", json={"delta": 0}, headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 400

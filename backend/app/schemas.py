@@ -38,6 +38,13 @@ class ChangePassword(BaseModel):
     newPassword: str = Field(min_length=6, max_length=64)
 
 
+class UserCoinAdjust(BaseModel):
+    """教师调整某学生个人能量币。"""
+
+    delta: int
+    note: str | None = None
+
+
 class SafetyRecordCreate(BaseModel):
     """提交一次安全科目考核结果。"""
 

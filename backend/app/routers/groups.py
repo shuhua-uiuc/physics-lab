@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user, require_teacher
-from ..models import Class, Group, User
+from ..models import Class, CoinTransaction, Group, User
 from ..schemas import (
     ClassOut,
     ContributionUpdate,
@@ -11,6 +11,7 @@ from ..schemas import (
     GroupOut,
     GroupRename,
     UserAvatarUpdate,
+    UserCoinAdjust,
     UserGroupAssign,
     UserOut,
 )
@@ -243,3 +244,38 @@ def update_avatar(
     db.commit()
     db.refresh(u)
     return user_to_out(u)
+
+
+@router.post("/users/{user_id}/coins")
+def adjust_user_coins(
+    user_id: str,
+    payload: UserCoinAdjust,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """教师调整某学生个人能量币，并在其所在小组的能量流水中记录该成员变动。"""
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if u.account_role != "student":
+        raise HTTPException(status_code=400, detail="只能调整学生个人能量币")
+    if payload.delta == 0:
+        raise HTTPException(status_code=400, detail="调整数量不能为 0")
+    u.personal_coins = max(0, u.personal_coins + payload.delta)
+    # 团队流水记录：注明是某成员的个人能量变动（不改变小组总能量）
+    if u.group_id:
+        db.add(
+            CoinTransaction(
+                id=gen_id("ct_"),
+                group_id=u.group_id,
+                user_id=u.id,
+                source="personal",
+                ref_id=gen_id(),
+                delta=payload.delta,
+                balance_after=u.personal_coins,
+                note=payload.note or f"教师调整「{u.name}」个人能量币 {payload.delta:+d}",
+            )
+        )
+    db.commit()
+    db.refresh(u)
+    return {"ok": True, "personalCoins": u.personal_coins}
