@@ -52,6 +52,7 @@ Tailwind + 语义色 token（`mission/energy/growth/nova/alert/danger/ink`）。
 ## 易踩坑的规则
 
 - **刷新丢数据**：只调 `initAuth()` 不会恢复分组/学生数据，必须 `bootstrapFromApi()`。教师总览用 `bootstrapFromApi(true)` 强制拉最新。
+- **两套数据库互不相通**（曾导致"我做的数据不见了"的误判）：Docker 路线的数据在卷 `physics_lab_db-data`（容器内 `/data/physics_lab.db`），直接跑 uvicorn 的路线在 `backend/physics_lab.db`。同一套界面连不同后端就是两个库。排查"数据消失"先确认地址：`:8080` = Docker 库，`:8000` = 本地库，`.env.local` 的 `VITE_API_BASE_URL` 决定 Vite 开发服务器连哪个（现指向 8080，与部署一致）。
 - `coinTxs` 必须**时间正序**存储；展示"最近 N 条"用 `reverse` + `slice`。
 - **后端测试必须用 `backend/.venv/bin/python`**（系统 Python 缺依赖）。
 - 改 `schemas.py`/`models.py` 后需重启 uvicorn（dev 服务器未开 `--reload`）；重启若 `jwt_secret` 变更会使旧 token 失效。

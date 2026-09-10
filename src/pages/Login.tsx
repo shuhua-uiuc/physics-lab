@@ -20,6 +20,7 @@ import {
   Atom,
   Mail,
   UserPlus,
+  Info,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -682,6 +683,15 @@ export default function Login() {
                           </div>
                         </>
                       )}
+                      {apiEnabled ? (
+                        <div className="p-3.5 rounded-2xl bg-mission-50/70 border border-mission-100/70 flex items-start gap-2.5">
+                          <Info size={15} className="text-mission-600 mt-0.5 shrink-0" />
+                          <div className="text-[12px] leading-relaxed text-ink-600 font-medium">
+                            请用上方「账号登录」进入：用户名填<span className="text-ink-900 font-bold">你的姓名</span>，初始密码<span className="text-ink-900 font-bold">123456</span>。登录不上请联系老师。
+                          </div>
+                        </div>
+                      ) : (
+                      <>
                       <div>
                         <label className="field-label flex items-center gap-1.5">
                           <Users size={13} /> 选择所在研究小组
@@ -789,6 +799,8 @@ export default function Login() {
                           Mission Ready
                         </div>
                       </div>
+                      </>
+                      )}
                       </>
                       )}
                     </div>
