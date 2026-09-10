@@ -53,3 +53,10 @@ docker run --rm -v physics_lab_db-data:/data -v "$PWD":/backup alpine \
 - **登录后接口 401 跳转登录页**：token 过期或 `JWT_SECRET` 变更，重新登录即可。
 - **深层路由（如 `/theory/topics`）刷新白屏**：请确认 web 镜像以 `--base /` 构建（当前 `web.Dockerfile` 已默认），并按上述"换主机/端口"核对 `VITE_API_BASE_URL`。
 - **离线/种子数据**：缺少 `VITE_API_BASE_URL` 时前端走 localStorage 离线演示；部署务必提供该值。
+
+## 国内网络构建失败（拉不到基础镜像）
+构建报 `unexpected status ... 403/EOF` 通常是镜像源失效。编辑 `~/.docker/daemon.json` 换可用源后重启 Docker：
+```json
+{ "registry-mirrors": ["https://docker.m.daocloud.io", "https://docker.1ms.run"] }
+```
+或直接拉取并打 tag：`docker pull docker.m.daocloud.io/library/node:22-alpine && docker tag docker.m.daocloud.io/library/node:22-alpine node:22-alpine`（nginx 同理）。
