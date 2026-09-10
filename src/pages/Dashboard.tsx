@@ -40,7 +40,9 @@ import {
   X,
 } from 'lucide-react';
 import CollapsibleSection from '@/components/ui/CollapsibleSection';
-import { classesApi, safetyApi, SafetyRecord } from '@/lib/apiService';
+import { classesApi, safetyApi, groupsApi, coinsApi, SafetyRecord } from '@/lib/apiService';
+import { apiEnabled, getToken } from '@/lib/apiClient';
+import { reviveDates } from '@/lib/reviveDates';
 import { cn } from '@/lib/utils';
 import type { User, Project, ProjectStatus } from '@/data/mockData';
 
@@ -508,6 +510,27 @@ export default function Dashboard() {
   // 安全记录 + TaskCard 真实进度
   const [safetyRecords, setSafetyRecords] = useState<SafetyRecord[]>([]);
   useEffect(() => { safetyApi.myRecords().then(setSafetyRecords).catch(() => {}); }, []);
+
+  // 轻量轮询：每 30 秒从后端拉最新小组能量与能量流水，让教师的调整无需手动刷新即可显示
+  useEffect(() => {
+    if (!apiEnabled || !getToken()) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const [freshGroups, freshTxs] = await Promise.all([groupsApi.list(), coinsApi.transactions()]);
+        if (!alive) return;
+        useGroupStore.setState({ groups: freshGroups });
+        const coinTxs = reviveDates(freshTxs as any[], ['createdAt']).sort(
+          (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        useCoinStore.setState({ coinTxs });
+      } catch {
+        /* 忽略单次轮询失败（离线/网络抖动），下次再试 */
+      }
+    };
+    const id = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
   const passedCats = new Set(safetyRecords.filter((r) => r.passed).map((r) => r.category)).size;
   const pendingCats = Math.max(0, 6 - passedCats);
   const frozenProjects = projects.filter((p) => p.status === 'frozen').length;
