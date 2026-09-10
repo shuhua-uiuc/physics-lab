@@ -251,3 +251,10 @@ def test_create_challenge_insufficient_balance(client, auth):
         headers=auth("u-3"),
     )
     assert resp.status_code == 400
+
+
+def test_group_coins_cannot_go_negative(client, auth):
+    # g-1 初始 500，扣 999 → 能量归 0，不为负
+    resp = client.post("/api/groups/g-1/coins", json={"delta": -999}, headers=auth("teacher", "teacher123"))
+    assert resp.status_code == 200
+    assert resp.json()["balanceAfter"] == 0

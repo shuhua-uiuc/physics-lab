@@ -34,7 +34,12 @@ def add_tx(
     group = db.get(models.Group, group_id)
     if group is None:
         raise ValueError(f"小组不存在: {group_id}")
-    group.total_coins = group.total_coins + delta
+    # 能量币不允许为负：扣减最多扣到 0，同步修正记账 delta
+    new_total = group.total_coins + delta
+    if new_total < 0:
+        delta = -group.total_coins
+        new_total = 0
+    group.total_coins = new_total
     tx = models.CoinTransaction(
         id=gen_id("tx_"),
         group_id=group_id,

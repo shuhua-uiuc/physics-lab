@@ -170,7 +170,7 @@ export const useGroupStore = create<GroupState>((set, get) => {
       let newBalance = 0;
       const nextGroups = groups.map((g) => {
         if (g.id === groupId) {
-          newBalance = g.totalCoins + delta;
+          newBalance = Math.max(0, g.totalCoins + delta);
           return { ...g, totalCoins: newBalance };
         }
         return g;
@@ -186,7 +186,7 @@ export const useGroupStore = create<GroupState>((set, get) => {
       let newBalance = 0;
       const nextGroups = groups.map((g) => {
         if (g.id === groupId) {
-          newBalance = g.totalCoins + delta;
+          newBalance = Math.max(0, g.totalCoins + delta);
           return { ...g, totalCoins: newBalance };
         }
         return g;
