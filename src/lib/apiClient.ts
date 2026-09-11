@@ -8,9 +8,14 @@ import { LS_KEYS } from '../data/mockData';
  * - JWT 存于 localStorage(plab_token)，自动附加到 Authorization 头。
  */
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const RAW_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
-export const apiEnabled = Boolean(API_BASE);
+// "/" 表示与前端同源：请求走相对路径（/api/...），由 nginx 同源代理到后端，天然无 CORS。
+// 这样同一个构建产物在 IP、域名、localhost 下都能直接用，换地址无需重新构建。
+// 其余值按绝对地址处理（本地开发时指 http://localhost:8080）。
+const API_BASE = RAW_BASE === '/' ? '' : RAW_BASE.replace(/\/$/, '');
+
+export const apiEnabled = Boolean(RAW_BASE);
 
 const TOKEN_KEY = 'plab_token';
 
