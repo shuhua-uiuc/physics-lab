@@ -115,17 +115,22 @@ export default function ResearchProfile() {
   const quizHigh = quizSessions.some((q) => q.score >= 90);
   const wonChallenges = challenges.filter((c) => c.creatorGroupId === me.groupId && c.submissions?.some((s) => s.earned > 0)).length;
 
+  // 各项均由真实活动量算出，不设"基线分"：此前每项都加了 40~60 的固定底数，
+  // 导致一个什么都没做的学生也会显示 60/40/40/45/50/45 的假能力值。
   const radar = useMemo(
     () => [
-      { skill: '理论基础', A: Math.min(100, quizAvg || 60) },
-      { skill: '实验操作', A: Math.min(100, 40 + doneProjects * 20) },
-      { skill: '出题能力', A: Math.min(100, submittedQ * 25 + 40) },
-      { skill: '编程建模', A: Math.min(100, 45 + doneProjects * 10) },
-      { skill: '安全规范', A: Math.min(100, safetyPassed * 20 + 50) },
-      { skill: '团队协作', A: Math.min(100, recruitHelps * 20 + 45) },
+      { skill: '理论基础', A: Math.min(100, quizAvg) },
+      { skill: '实验操作', A: Math.min(100, doneProjects * 25) },
+      { skill: '出题能力', A: Math.min(100, submittedQ * 25) },
+      { skill: '编程建模', A: Math.min(100, doneProjects * 20) },
+      { skill: '安全规范', A: Math.min(100, safetyPassed * 20) },
+      { skill: '团队协作', A: Math.min(100, recruitHelps * 25) },
     ],
     [quizAvg, doneProjects, submittedQ, safetyPassed, recruitHelps]
   );
+  const radarAvg = Math.round(radar.reduce((s, r) => s + r.A, 0) / radar.length);
+  const radarGrade =
+    radarAvg >= 85 ? 'A+' : radarAvg >= 70 ? 'A' : radarAvg >= 55 ? 'B' : radarAvg >= 40 ? 'C' : radarAvg > 0 ? 'D' : '待积累';
   const badgeEarned = useMemo(() => {
     const m: Record<string, boolean> = {
       b1: safetyPassed > 0,
@@ -448,7 +453,7 @@ export default function ResearchProfile() {
                   <Radar size={19} className="text-mission-500" />
                   Skill Radar · 能力六维图
                 </h2>
-                <span className="chip-mission !py-0.5 !px-2 !text-[10px]">综合 B+（演示数据）</span>
+                <span className="chip-mission !py-0.5 !px-2 !text-[10px]">综合 {radarGrade}</span>
               </div>
               <div className="h-[300px] -mx-2">
                 <ResponsiveContainer width="100%" height="100%">
@@ -493,6 +498,11 @@ export default function ResearchProfile() {
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
+              {radarAvg === 0 && (
+                <p className="mt-2 text-center text-[12px] text-ink-400 leading-relaxed">
+                  还没有可统计的表现。完成测验、安全考核、出题或项目研发后，各项能力会按实际数据增长。
+                </p>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
                 {radar.map((s, i) => {
                   const palette = ['#4F7CFF', '#FF8A34', '#22C55E', '#8B5CF6', '#F59E0B', '#06B6D4'];

@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+import MyTeam from '@/pages/MyTeam';
 import LearningHub from '@/pages/LearningHub';
 import KnowledgeGalaxy from '@/pages/KnowledgeGalaxy';
 import ProjectCenter from '@/pages/ProjectCenter';
@@ -196,6 +197,15 @@ export default function App() {
         />
 
         <Route
+          path="/my-team"
+          element={
+            <MissionShell>
+              <MyTeam />
+            </MissionShell>
+          }
+        />
+
+        <Route
           path="/theory/topics"
           element={
             <MissionShell>
@@ -285,38 +295,22 @@ export default function App() {
 
         <Route
           path="/recruit/market"
-          element={
-            <MissionShell>
-              <ResearchMarketplace />
-            </MissionShell>
-          }
+          element={<ResearchMarketplace />}
         />
 
         <Route
           path="/coins"
-          element={
-            <MissionShell>
-              <ResearchLeague />
-            </MissionShell>
-          }
+          element={<ResearchLeague />}
         />
 
         <Route
           path="/showcase"
-          element={
-            <MissionShell>
-              <AchievementHall />
-            </MissionShell>
-          }
+          element={<AchievementHall />}
         />
 
         <Route
           path="/profile"
-          element={
-            <MissionShell>
-              <ResearchProfile />
-            </MissionShell>
-          }
+          element={<ResearchProfile />}
         />
 
         <Route path="/group" element={<Navigate to="/communicator" replace />} />
@@ -345,9 +339,7 @@ export default function App() {
           path="/teacher/overview"
           element={
             <TeacherOnly>
-              <MissionShell>
-                <TeacherOverview />
-              </MissionShell>
+              <TeacherOverview />
             </TeacherOnly>
           }
         />
@@ -355,9 +347,7 @@ export default function App() {
           path="/teacher/groups"
           element={
             <TeacherOnly>
-              <MissionShell>
-                <TeacherGroups />
-              </MissionShell>
+              <TeacherGroups />
             </TeacherOnly>
           }
         />

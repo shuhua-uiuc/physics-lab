@@ -12,6 +12,7 @@ import {
   Trophy,
   Medal,
   Users,
+  UsersRound,
   Rocket,
   Bell,
   LogOut,
@@ -55,6 +56,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
+  { id: 'team', label: 'My Team', icon: UsersRound, to: '/my-team' },
   { id: 'learning', label: 'Learning Hub', icon: BookOpen, to: '/theory/topics' },
   { id: 'galaxy', label: 'Knowledge Galaxy', icon: Sparkles, to: '/theory/challenge' },
   { id: 'communicator', label: 'Group Communicator', icon: Users, to: '/communicator' },

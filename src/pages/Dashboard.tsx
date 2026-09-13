@@ -365,12 +365,18 @@ export default function Dashboard() {
     const hasQuizSession = quizSessions.length > 0;
     const hasPassedQuiz = quizSessions.some((s) => s.passed);
     const hasBlindPoints = quizSessions.some((s) => s.blindPoints.length > 0);
-    const hasCreatedChallenge = challenges.length > 0;
-    const hasSubmittedChallenge = challenges.some((c) => c.submissions.length > 0);
-    const hasCoinTransaction = coinTxs.length > 0;
-    const hasProject = projects.length > 0;
-    const hasProjectInProgress = projects.some((p) => p.progress > 50);
-    const hasShowcase = showcaseItems.length > 0;
+
+    // 以下一律按「本组」口径统计。此前用的是全系统数据（projects.length > 0 之类），
+    // 导致任何一个小组做了项目，全校学生都被算作"已完成"，人人都显示同一个进度。
+    const hasCreatedChallenge = challenges.some((c) => c.creatorGroupId === groupId);
+    const hasSubmittedChallenge = challenges.some((c) =>
+      c.submissions?.some((s) => s.groupId === groupId)
+    );
+    const hasCoinTransaction = coinTxs.some((tx) => tx.groupId === groupId);
+    const myGroupProjects = projects.filter((p) => p.ownerGroupId === groupId);
+    const hasProject = myGroupProjects.length > 0;
+    const hasProjectInProgress = myGroupProjects.some((p) => p.progress > 50);
+    const hasShowcase = showcaseItems.some((s) => s.groupId === groupId);
 
     const progressMap: Record<string, { done: boolean; active: boolean }> = {
       ai_learn: { done: hasQuizSession, active: !hasQuizSession && false },
@@ -398,7 +404,7 @@ export default function Dashboard() {
     }
 
     return progressMap;
-  }, [quizSessions, challenges, coinTxs, projects, showcaseItems]);
+  }, [quizSessions, challenges, coinTxs, projects, showcaseItems, groupId]);
 
   const completedSteps = useMemo(() => {
     return LEARNING_PATH_CONFIG.filter((step) => learningPathProgress[step.id]?.done).length;
