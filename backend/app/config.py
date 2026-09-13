@@ -15,9 +15,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 720  # 12 小时
 
-    teacher_password: str = "admin123"
-    student_default_password: str = "123456"
-    admin_password: str = "admin@123"
+    # 兜底值仅为占位符：正式使用必须在 .env 中配置真实密码（改后需重启后端）。
+    # 刻意不写任何"看起来像真密码"的默认值，避免仓库泄露可用的登录凭据。
+    teacher_password: str = "change-me-via-env"
+    student_default_password: str = "change-me-via-env"
+    admin_password: str = "change-me-via-env"
 
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
 

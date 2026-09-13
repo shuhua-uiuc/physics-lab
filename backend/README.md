@@ -33,8 +33,9 @@ uvicorn app.main:app --reload --port 8000
 
 ## 认证说明
 
-- 教师账号：用户名 `teacher`，默认密码 `admin123`
-- 学生账号：用户名为学生的登录名（见种子数据打印输出），默认密码 `student123`
+- 教师账号：用户名 `teacher`，密码取自 `TEACHER_PASSWORD`（见下方环境变量，必须在 `.env` 中自行设置）
+- 学生账号：用户名为学生的登录名（见种子数据打印输出），密码取自 `STUDENT_DEFAULT_PASSWORD`
+- 未在 `.env` 配置时，密码兜底为占位符 `change-me-via-env`，无法用于正常登录——这是刻意设计，避免仓库泄露可用凭据
 - 登录接口 `POST /api/auth/login` 返回 JWT，前端在后续请求头 `Authorization: Bearer <token>` 中携带。
 
 ## 环境变量（可选）
@@ -45,7 +46,7 @@ uvicorn app.main:app --reload --port 8000
 DATABASE_URL=sqlite:///./physics_lab.db
 JWT_SECRET=change-me-in-production
 ACCESS_TOKEN_EXPIRE_MINUTES=720
-TEACHER_PASSWORD=admin123
-STUDENT_DEFAULT_PASSWORD=student123
+TEACHER_PASSWORD=
+STUDENT_DEFAULT_PASSWORD=
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174
 ```
