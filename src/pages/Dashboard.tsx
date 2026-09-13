@@ -606,7 +606,7 @@ export default function Dashboard() {
       )}
 
       {/* ============ ROW 1: HERO ============ */}
-      <section className="grid grid-cols-12 gap-5" style={{ minHeight: 240 }}>
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5" style={{ minHeight: 240 }}>
         {/* Welcome Hero - 左8列 */}
         <div className="col-span-12 lg:col-span-8 rounded-[28px] p-6 relative overflow-hidden bg-gradient-to-br from-mission-50/80 via-white/90 to-nova-50/60 border border-mission-100/50">
           <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-gradient-to-br from-mission-400/15 via-nova-400/10 to-transparent blur-3xl pointer-events-none" />
@@ -696,12 +696,14 @@ export default function Dashboard() {
 
       {/* ============ ROW 2: LEARNING PATH ============ */}
       <section className="rounded-[28px] p-6 bg-gradient-to-br from-growth-50/80 via-white/90 to-mission-50/60 border border-growth-100/50">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <span className="mission-label">Physics Learning Path</span>
-            <h2 className="text-[20px] font-extrabold text-ink-800">全周期学习路径 · 实时追踪</h2>
+        {/* flex-wrap：窄屏时右侧统计整块换到下一行。否则 justify-between 下右侧会被压成
+            一个字一行（"已完成 3/11" 竖排），且 shrink-0 防止它被挤压 */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="mission-label shrink-0">Physics Learning Path</span>
+            <h2 className="text-[17px] sm:text-[20px] font-extrabold text-ink-800">全周期学习路径 · 实时追踪</h2>
           </div>
-          <div className="flex items-center gap-2 text-[12px] text-ink-500 font-medium">
+          <div className="flex items-center gap-2 text-[12px] text-ink-500 font-medium shrink-0">
             <span className="w-2 h-2 rounded-full bg-growth-500" />已完成 {completedSteps}/{LEARNING_PATH_CONFIG.length}
             <span className="w-px h-3 bg-ink-200 mx-1" />
             <span className="w-2 h-2 rounded-full bg-mission-500 animate-pulse" />进行中
@@ -751,7 +753,7 @@ export default function Dashboard() {
         }
         defaultOpen={true}
       >
-        <div className="grid grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* 左 3 Energy Center */}
           <div className="col-span-12 lg:col-span-3 rounded-[24px] bg-gradient-to-br from-energy-50/70 via-white/85 to-alert-50/50 border border-energy-100/50 p-5">
             <div className="relative flex items-center justify-center mb-4" style={{ height: 140 }}>
@@ -809,9 +811,10 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* 手机上单列：写死两列会让每张卡只剩约 110px 可用宽，卡内文字被压成一列一个字 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {visibleProjects.length === 0 ? (
-                <div className="col-span-2 py-14 text-center text-[12px] text-ink-400">
+                <div className="col-span-1 sm:col-span-2 py-14 text-center text-[12px] text-ink-400">
                   暂无项目，点击右上角「创建项目」新建
                 </div>
               ) : visibleProjects.map((p, idx) => {
@@ -998,7 +1001,7 @@ export default function Dashboard() {
         }
         defaultOpen={false}
       >
-        <div className="grid grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* 左7 Research Marketplace */}
           <div className="col-span-12 lg:col-span-7 rounded-[24px] bg-gradient-to-br from-cyan-50/70 via-white/85 to-blue-50/50 border border-cyan-100/50 p-5">
             <div className="flex items-center justify-between mb-5">
@@ -1154,7 +1157,7 @@ export default function Dashboard() {
         }
         defaultOpen={false}
       >
-        <div className="grid grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* 左7 Achievement Hall */}
           <div className="col-span-12 lg:col-span-7 rounded-[24px] bg-gradient-to-br from-growth-50/70 via-white/85 to-emerald-50/50 border border-growth-100/50 p-5">
             <div className="flex items-center justify-between mb-5">

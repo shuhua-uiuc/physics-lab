@@ -218,7 +218,7 @@ export default function ResearchMarketplace() {
         >
           <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-mission-400/10 blur-3xl pointer-events-none" />
           <div className="absolute -bottom-24 -left-20 w-80 h-80 rounded-full bg-nova-400/10 blur-3xl pointer-events-none" />
-          <div className="grid grid-cols-12 gap-6 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
             <div className="col-span-12 lg:col-span-5">
               <div className="flex items-start gap-4">
                 <div className="relative shrink-0">
@@ -286,7 +286,7 @@ export default function ResearchMarketplace() {
           </div>
         </motion.section>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-9 space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-[12px] text-ink-500">

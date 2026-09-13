@@ -244,8 +244,8 @@ export default function SafetyLab() {
         <div className="absolute -right-32 -top-32 w-[400px] h-[400px] rounded-full bg-gradient-to-br from-growth-300/25 via-mission-300/15 to-nova-300/10 blur-3xl pointer-events-none" />
         <div className="absolute -left-20 -bottom-24 w-80 h-80 rounded-full bg-gradient-to-br from-mission-300/20 via-nova-300/10 to-transparent blur-3xl pointer-events-none" />
 
-        <div className="relative grid grid-cols-12 gap-8 items-center">
-          <div className="col-span-5 flex items-center gap-6">
+        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-5 flex items-center gap-6">
             <div className="relative shrink-0">
               <div className="absolute -inset-3 rounded-[32px] bg-growth-400/25 blur-2xl animate-pulse" />
               <div className="shield-card relative w-28 h-32 bg-gradient-to-br from-growth-300 via-growth-500 to-growth-700 shadow-glowMission flex items-center justify-center">
@@ -268,7 +268,7 @@ export default function SafetyLab() {
             </div>
           </div>
 
-          <div className="col-span-7 grid grid-cols-3 gap-4">
+          <div className="lg:col-span-7 grid grid-cols-3 gap-4">
             {[
               { label: '已通过认证', value: passedCount, total: SAFETY_DOMAINS.length, icon: CheckCircle2, color: 'growth', grad: 'from-growth-400 via-growth-500 to-growth-600' },
               { label: '待参加考核', value: pendingCount, total: SAFETY_DOMAINS.length, icon: PlayCircle, color: 'energy', grad: 'from-energy-400 via-alert-500 to-energy-600' },
@@ -306,8 +306,8 @@ export default function SafetyLab() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-6">
-        <section className="col-span-8 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <section className="lg:col-span-8 space-y-4">
           <div className="mission-label">
             <ShieldCheck size={12} />
             六大安全领域 · 分类考核
@@ -430,7 +430,7 @@ export default function SafetyLab() {
           </div>
         </section>
 
-        <aside className="col-span-4 space-y-4">
+        <aside className="lg:col-span-4 space-y-4">
           <div className="glass-card p-5 rounded-2xl relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-gradient-to-br from-energy-300/30 via-alert-300/20 to-transparent blur-2xl" />
             <div className="relative">

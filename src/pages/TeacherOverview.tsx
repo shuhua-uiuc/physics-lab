@@ -334,7 +334,7 @@ export default function TeacherOverview() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-12 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div className="col-span-12 md:col-span-6 lg:col-span-4 rounded-2xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100/50 p-4">
               <div className="text-[13px] font-bold text-ink-800 mb-2">能量币近 30 天</div>
               <div className="h-[180px] -mx-2">
@@ -440,7 +440,7 @@ export default function TeacherOverview() {
           </div>
         </motion.section>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-8 space-y-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -486,7 +486,7 @@ export default function TeacherOverview() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.15 }}
-              className="grid grid-cols-12 gap-4"
+              className="grid grid-cols-1 lg:grid-cols-12 gap-4"
             >
               <div className="col-span-12 lg:col-span-8 glass-card p-5 rounded-[24px]">
                 <div className="flex items-center justify-between mb-4">

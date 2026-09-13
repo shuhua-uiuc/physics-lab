@@ -198,7 +198,7 @@ export default function ResearchLeague() {
           </div>
         </motion.section>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-8 space-y-6">
             <div className="space-y-5">
               {(isPersonal ? personalByClass : rankingByClass).length === 0 ? (

@@ -123,8 +123,8 @@ export default function KnowledgeGalaxy() {
         <div className="absolute -top-32 -right-20 w-96 h-96 rounded-full bg-gradient-to-br from-nova-300/25 via-mission-300/15 to-transparent blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-10 w-80 h-80 rounded-full bg-gradient-to-br from-growth-300/20 via-mission-300/10 to-transparent blur-3xl pointer-events-none" />
 
-        <div className="relative grid grid-cols-12 gap-6 items-start">
-          <div className="col-span-5">
+        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-5">
             <div className="mission-label mb-4">
               <Sparkles size={12} />
               EXPAND YOUR UNIVERSE
@@ -153,7 +153,7 @@ export default function KnowledgeGalaxy() {
             </div>
           </div>
 
-          <div className="col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4">
             <div className="relative">
               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-400">
                 <Search size={18} />
@@ -204,8 +204,8 @@ export default function KnowledgeGalaxy() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-6">
-        <section className="col-span-9 glass-card p-6 rounded-[20px] relative overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <section className="lg:col-span-9 glass-card p-6 rounded-[20px] relative overflow-hidden">
           <div className="absolute inset-0 bg-grid-fine opacity-40 pointer-events-none" />
           <div className="relative">
             <svg viewBox="0 0 1000 960" className="w-full h-auto">
@@ -369,7 +369,7 @@ export default function KnowledgeGalaxy() {
           </div>
         </section>
 
-        <aside className="col-span-3 space-y-4">
+        <aside className="lg:col-span-3 space-y-4">
           {selectedNode ? (
             <motion.div
               key={selectedNode.id}

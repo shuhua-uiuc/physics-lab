@@ -231,7 +231,7 @@ export default function AchievementHall() {
         >
           <div className="absolute -top-10 right-10 w-72 h-72 rounded-full bg-alert-400/10 blur-3xl pointer-events-none" />
           <div className="absolute -bottom-20 left-0 w-80 h-80 rounded-full bg-nova-400/10 blur-3xl pointer-events-none" />
-          <div className="relative z-10 grid grid-cols-12 gap-6 items-center">
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             <div className="col-span-12 lg:col-span-7">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="relative shrink-0">
@@ -292,7 +292,7 @@ export default function AchievementHall() {
           </div>
         </motion.section>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-9">
             <div className="flex items-center justify-between mb-4">
               <h2 className="flex items-center gap-2 text-[18px] font-bold text-ink-800">

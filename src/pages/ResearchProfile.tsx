@@ -227,7 +227,7 @@ export default function ResearchProfile() {
                 修改密码
               </button>
             </div>
-            <div className="grid grid-cols-12 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <div className="col-span-12 md:col-span-7 flex items-start gap-5">
                 <div className="relative shrink-0">
                   <div className="absolute -inset-2 rounded-[36px] bg-gradient-to-br from-mission-400/30 via-nova-400/20 to-energy-400/20 blur-lg" />
@@ -382,7 +382,7 @@ export default function ResearchProfile() {
           </div>
         </motion.section>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-6">
             <motion.section
               initial={{ opacity: 0, y: 20 }}

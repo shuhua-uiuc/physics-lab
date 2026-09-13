@@ -110,8 +110,8 @@ export default function LearningHub() {
         <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-gradient-to-br from-mission-300/30 to-nova-300/20 blur-3xl pointer-events-none" />
         <div className="absolute -left-10 -bottom-10 w-56 h-56 rounded-full bg-gradient-to-br from-growth-300/20 to-mission-300/20 blur-3xl pointer-events-none" />
         
-        <div className="relative grid grid-cols-12 gap-6 items-center">
-          <div className="col-span-8">
+        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="lg:col-span-8">
             <div className="mission-label mb-4">
               <BookOpen size={12} />
               LEARNING HUB · AI POWERED
@@ -136,7 +136,7 @@ export default function LearningHub() {
             </div>
           </div>
 
-          <div className="col-span-4 flex items-center justify-end">
+          <div className="lg:col-span-4 flex items-center justify-end">
             <div className="flex items-center gap-6">
               <div className="relative">
                 <ProgressRing
@@ -178,8 +178,8 @@ export default function LearningHub() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-6">
-        <aside className="col-span-3 space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <aside className="lg:col-span-3 space-y-3">
           <div className="mission-label">
             <Atom size={12} />
             物理主题导航
@@ -249,7 +249,7 @@ export default function LearningHub() {
           })}
         </aside>
 
-        <section className="col-span-9">
+        <section className="lg:col-span-9">
           <div className="flex items-center gap-2 mb-4">
             {([
               { id: 'ai-study', label: 'AI Study Tabs', icon: Brain, color: 'mission' },
@@ -339,9 +339,9 @@ export default function LearningHub() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-12 gap-4"
+              className="grid grid-cols-1 lg:grid-cols-12 gap-4"
             >
-              <div className="col-span-7 glass-card p-6 rounded-2xl">
+              <div className="lg:col-span-7 glass-card p-6 rounded-2xl">
                 <div className="flex items-center justify-between mb-5">
                   <div className="mission-label">
                     <Sparkles size={12} />
@@ -410,7 +410,7 @@ export default function LearningHub() {
                 </div>
               </div>
 
-              <div className="col-span-5 space-y-4">
+              <div className="lg:col-span-5 space-y-4">
                 <div className="glass-card p-5 rounded-2xl">
                   <div className="chip-nova mb-3">
                     <Lightbulb size={12} /> 典型例题卡
@@ -455,9 +455,9 @@ export default function LearningHub() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-12 gap-4"
+              className="grid grid-cols-1 lg:grid-cols-12 gap-4"
             >
-              <div className="col-span-7 glass-card p-8 rounded-2xl relative overflow-hidden">
+              <div className="lg:col-span-7 glass-card p-8 rounded-2xl relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-energy-500/5 via-transparent to-alert-500/5" />
                 <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-gradient-to-br from-energy-300/20 to-alert-300/10 blur-3xl" />
                 <div className="relative text-center py-6">
@@ -487,7 +487,7 @@ export default function LearningHub() {
                 </div>
               </div>
 
-              <div className="col-span-5 space-y-3">
+              <div className="lg:col-span-5 space-y-3">
                 <div className="mission-label">
                   <Trophy size={12} />
                   最近测验成绩

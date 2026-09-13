@@ -207,8 +207,8 @@ export default function ProjectCenter() {
         <div className="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-gradient-to-br from-mission-300/25 via-nova-300/15 to-growth-300/10 blur-3xl pointer-events-none" />
         <div className="absolute -left-16 -bottom-20 w-72 h-72 rounded-full bg-gradient-to-br from-energy-300/15 via-mission-300/10 to-transparent blur-3xl pointer-events-none" />
 
-        <div className="relative grid grid-cols-12 gap-6 items-center">
-          <div className="col-span-7">
+        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="lg:col-span-7">
             <div className="flex items-center gap-4 mb-3">
               <div className="relative">
                 <div className="absolute inset-0 rounded-2xl bg-mission-400/30 blur-lg animate-pulse" />
@@ -244,7 +244,7 @@ export default function ProjectCenter() {
             </div>
           </div>
 
-          <div className="col-span-5 flex justify-end gap-3">
+          <div className="lg:col-span-5 flex justify-end gap-3">
             {['planning', 'progress', 'review', 'done', 'frozen'].map((s, i) => {
               const stat = s as keyof typeof stats;
               const cfg = STATUS_CONFIG[s as ProjectStatus];
@@ -294,8 +294,9 @@ export default function ProjectCenter() {
             </select>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-ink-500 uppercase tracking-wide">状态</span>
+          {/* flex-wrap：窄屏时状态按钮换行，否则会被压成"规/划/中"竖排 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold text-ink-500 uppercase tracking-wide shrink-0">状态</span>
             {STATUSES.map((s) => {
               const cfg = STATUS_CONFIG[s];
               const active = statusFilters.includes(s);
@@ -338,8 +339,8 @@ export default function ProjectCenter() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-6">
-        <section className="col-span-8 glass-card p-8 rounded-[20px] relative overflow-hidden min-h-[680px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <section className="lg:col-span-8 glass-card p-8 rounded-[20px] relative overflow-hidden min-h-[680px]">
           <div className="absolute inset-0 bg-grid-fine opacity-30 pointer-events-none" />
           <div className="relative grid grid-cols-3 gap-y-12 gap-x-8">
             {filteredPlanets.map((planet, idx) => {
@@ -511,7 +512,7 @@ export default function ProjectCenter() {
           </div>
         </section>
 
-        <aside id="mission-focus-panel" className="col-span-4 space-y-4 scroll-mt-24">
+        <aside id="mission-focus-panel" className="lg:col-span-4 space-y-4 scroll-mt-24">
           <div className="glass-card p-2 rounded-2xl">
             <div className="flex items-center gap-1 p-1">
               {([
