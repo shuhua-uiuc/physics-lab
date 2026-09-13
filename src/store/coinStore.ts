@@ -225,14 +225,28 @@ export const useCoinStore = create<CoinState>((set, get) => {
       const members = getGroupUsers(project.ownerGroupId);
       const totalReward = project.rewardCoins;
 
-      members.forEach((member) => {
-        const ratio = group.contributionRatio[member.id] || 0;
-        const personalEarning = Math.floor((totalReward * ratio) / 100);
-        if (personalEarning > 0) {
-          userEarnings[member.id] = personalEarning;
-          updateUserPersonalCoins(member.id, personalEarning);
-        }
-      });
+      // 与后端 settle_project_done 保持一致：比例表覆盖不到本组成员时（历史遗留的失效 id），
+      // 按人头均分兜底，避免"项目做完了谁都拿不到个人能量"这种静默失败。
+      const ratioSum = members.reduce((s, m) => s + (group.contributionRatio[m.id] || 0), 0);
+      if (members.length > 0 && ratioSum > 0) {
+        members.forEach((member) => {
+          const personalEarning = Math.floor((totalReward * (group.contributionRatio[member.id] || 0)) / 100);
+          if (personalEarning > 0) {
+            userEarnings[member.id] = personalEarning;
+            updateUserPersonalCoins(member.id, personalEarning);
+          }
+        });
+      } else if (members.length > 0) {
+        const share = Math.floor(totalReward / members.length);
+        const remainder = totalReward - share * members.length;
+        members.forEach((member, i) => {
+          const personalEarning = share + (i < remainder ? 1 : 0);
+          if (personalEarning > 0) {
+            userEarnings[member.id] = personalEarning;
+            updateUserPersonalCoins(member.id, personalEarning);
+          }
+        });
+      }
 
       addTx(project.ownerGroupId, {
         source: 'project',

@@ -131,12 +131,24 @@ def settle_project_done(db: Session, project: models.Project) -> dict:
     total_reward = project.reward_coins
     ratio_map = group.contribution_ratio or {}
 
-    for member in members:
-        ratio = ratio_map.get(member.id, 0)
-        earning = int(total_reward * ratio / 100)
-        if earning > 0:
-            earnings[member.id] = earning
-            member.personal_coins = member.personal_coins + earning
+    # 只有比例表确实覆盖到本组成员时才按比例分。历史遗留的失效 id（如 u-01 对不上现在的
+    # u_xxxxxx）会让每个人的比例都是 0——那样项目做完了却谁都拿不到个人能量，是静默失败。
+    # 因此这里加均分兜底：比例表用不上时，奖励按人头平分给组员。
+    ratios = {m.id: ratio_map.get(m.id, 0) for m in members}
+    if members and sum(ratios.values()) > 0:
+        for member in members:
+            earning = int(total_reward * ratios[member.id] / 100)
+            if earning > 0:
+                earnings[member.id] = earning
+                member.personal_coins = member.personal_coins + earning
+    elif members:
+        # 余数依次补给靠前的成员，保证分出去的总额恰好等于奖励
+        share, remainder = divmod(total_reward, len(members))
+        for i, member in enumerate(members):
+            earning = share + (1 if i < remainder else 0)
+            if earning > 0:
+                earnings[member.id] = earning
+                member.personal_coins = member.personal_coins + earning
 
     add_tx(
         db,
