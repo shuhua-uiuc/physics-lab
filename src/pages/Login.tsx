@@ -291,7 +291,8 @@ export default function Login() {
 
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
           {/* ============== LEFT SIDE: Hero ============== */}
-          <div className="order-2 lg:order-1">
+          {/* min-w-0：网格子项默认 min-width:auto，不收缩就会被下方 11 步流程图顶宽 */}
+          <div className="order-2 lg:order-1 min-w-0">
             <div className="inline-flex items-center gap-2 chip-mission mb-6">
               <Sparkles size={13} />
               <span className="font-bold">NASA Command Center · 创新探究 · 实验驱动 · 小组协作</span>
@@ -344,7 +345,9 @@ export default function Login() {
                   <CheckCircle2 size={9} className="mr-0.5" />已完成 5/11
                 </span>
               </div>
-              <div className="relative flex items-center justify-between gap-0.5 py-1">
+              {/* 11 个节点各 shrink-0 + minWidth34，加起来约 436px；窄屏内横向滚动，
+                  否则会把整个左侧栏顶宽、右侧内容被裁掉 */}
+              <div className="relative flex items-center justify-between gap-0.5 py-1 overflow-x-auto scroll-thin">
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
                   <line x1="3%" y1="50%" x2="97%" y2="50%" stroke="#CBD5E1" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.6" />
                 </svg>
