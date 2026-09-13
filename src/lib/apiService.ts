@@ -86,6 +86,8 @@ export const usersApi = {
     api.put<User>(`/api/users/${userId}/group`, { groupId, role }),
   adjustCoins: (userId: string, delta: number, note?: string) =>
     api.post<{ ok: boolean; personalCoins: number }>(`/api/users/${userId}/coins`, { delta, note }),
+  resetEarned: (userId: string) =>
+    api.post<{ ok: boolean; userId: string }>(`/api/users/${userId}/earned-reset`),
 };
 
 // ---------- Admin: Group class transfer ----------

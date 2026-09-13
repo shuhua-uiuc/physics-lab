@@ -299,3 +299,40 @@ def adjust_user_coins(
     db.commit()
     db.refresh(u)
     return {"ok": True, "personalCoins": u.personal_coins}
+
+
+@router.post("/users/{user_id}/earned-reset")
+def reset_user_earned(
+    user_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """清零某学生的「累计获得」。
+
+    非破坏性：不修改也不删除任何历史流水，只写入一条 source="reset" 的标记流水；
+    前端统计「累计获得」时，只累加该学生最近一次 reset 之后的正向流水。
+    这样既能把数字归零，又保留完整审计轨迹（可追溯是谁在什么时候清的）。
+    """
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if u.account_role != "student":
+        raise HTTPException(status_code=400, detail="只能清零学生的累计获得")
+    if not u.group_id:
+        # coin_transactions.group_id 非空，未分组学生无处挂账
+        raise HTTPException(status_code=400, detail="该学生尚未加入小组，无法记录清零操作")
+
+    db.add(
+        CoinTransaction(
+            id=gen_id("ct_"),
+            group_id=u.group_id,
+            user_id=u.id,
+            source="reset",
+            ref_id=gen_id(),
+            delta=0,
+            balance_after=u.personal_coins,
+            note=f"清零「{u.name}」累计获得",
+        )
+    )
+    db.commit()
+    return {"ok": True, "userId": u.id}

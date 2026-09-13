@@ -1,16 +1,18 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { UsersRound, Crown, Zap, Trophy, FolderKanban, UserPlus, Sparkles } from 'lucide-react';
+import { UsersRound, Crown, Zap, Trophy, FolderKanban, UserPlus, Sparkles, TrendingUp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useCoinStore } from '@/store/coinStore';
 
 /**
- * 我的小组 —— 学生查看本组成员、各人能量与贡献度。
+ * 我的小组 —— 学生查看本组成员、各自能量与贡献占比。
  *
- * 数据全部来自 groupStore / projectStore（后端模式下由 bootstrapFromApi 注入），
- * 不做任何本地派生计算以外的加工，避免出现"看起来像真数据"的假数据。
+ * 数据全部来自 groupStore / projectStore / coinStore（后端模式下由 bootstrapFromApi 注入）。
+ * 注意：groups.contributionRatio 里存的是历史遗留的旧用户 id（如 u-01），与当前用户 id
+ * （u_xxxx）对不上，所以贡献占比不取该字段，改为用个人能量实时计算，避免显示空的假指标。
  */
 export default function MyTeam() {
   const groupId = useAuthStore((s) => s.groupId);
@@ -18,6 +20,7 @@ export default function MyTeam() {
   const groups = useGroupStore((s) => s.groups);
   const users = useGroupStore((s) => s.users);
   const projects = useProjectStore((s) => s.projects);
+  const coinTxs = useCoinStore((s) => s.coinTxs);
 
   const myGroup = useMemo(
     () => (groupId ? groups.find((g) => g.id === groupId) : undefined),
@@ -35,6 +38,33 @@ export default function MyTeam() {
       });
   }, [users, myGroup]);
 
+  // 每人「累计获得」= 该成员名下、**最近一次清零之后**的正向流水增量之和。两个要点：
+  //   1) 只取正增量——标签是"获得"，把扣减的负数也算进去会显示成 -12 这种误导值；
+  //   2) 尊重 source='reset' 标记（教师端「清零累计获得」写入的）——只统计该标记之后的流水，
+  //      于是清零后归 0，而历史流水一条不删。
+  const earnedByUser = useMemo(() => {
+    const at = (d: Date | string) => new Date(d).getTime();
+    const lastReset: Record<string, number> = {};
+    for (const tx of coinTxs) {
+      if (tx.source !== 'reset' || !tx.userId) continue;
+      const t = at(tx.createdAt);
+      if (!lastReset[tx.userId] || t > lastReset[tx.userId]) lastReset[tx.userId] = t;
+    }
+    const m: Record<string, number> = {};
+    for (const tx of coinTxs) {
+      if (!tx.userId || tx.delta <= 0) continue;
+      if (lastReset[tx.userId] && at(tx.createdAt) <= lastReset[tx.userId]) continue;
+      m[tx.userId] = (m[tx.userId] || 0) + tx.delta;
+    }
+    return m;
+  }, [coinTxs]);
+
+  // 贡献占比：以个人能量占全组个人能量之和计算；全组为 0 时不显示（不编造百分比）
+  const personalTotal = useMemo(
+    () => members.reduce((s, m) => s + Math.max(0, m.personalCoins || 0), 0),
+    [members]
+  );
+
   // 同班级内按小组总能量排名
   const rank = useMemo(() => {
     if (!myGroup) return null;
@@ -50,6 +80,7 @@ export default function MyTeam() {
     [projects, myGroup]
   );
 
+  const avgCoins = members.length ? Math.round((myGroup?.totalCoins || 0) / members.length) : 0;
   const myContribution = myGroup && userId ? myGroup.contributionRatio?.[userId] : undefined;
 
   // ---- 未加入小组：给出去哪儿解决的指引，而不是空白页 ----
@@ -118,9 +149,10 @@ export default function MyTeam() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mt-6">
             <Stat icon={UsersRound} label="小组成员" value={`${members.length}`} unit="人" tint="mission" />
             <Stat icon={Zap} label="小组总能量" value={`${myGroup.totalCoins || 0}`} unit="⚡" tint="energy" />
+            <Stat icon={TrendingUp} label="人均能量" value={`${avgCoins}`} unit="⚡" tint="growth" />
             <Stat
               icon={Trophy}
               label="本班排名"
@@ -128,7 +160,7 @@ export default function MyTeam() {
               unit={rank ? `/ ${rank.total}` : ''}
               tint="nova"
             />
-            <Stat icon={FolderKanban} label="本组项目" value={`${projectCount}`} unit="个" tint="growth" />
+            <Stat icon={FolderKanban} label="本组项目" value={`${projectCount}`} unit="个" tint="mission" />
           </div>
         </div>
       </motion.section>
@@ -145,62 +177,92 @@ export default function MyTeam() {
           <span className="text-[12px] text-ink-400 font-medium">按身份与个人能量排序</span>
         </div>
 
-        <div className="space-y-2">
-          {members.map((m, idx) => {
-            const isMe = m.id === userId;
-            const contribution = myGroup.contributionRatio?.[m.id];
-            return (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: 0.15 + idx * 0.04 }}
-                className={
-                  'flex items-center gap-3 p-3 rounded-2xl border transition-colors ' +
-                  (isMe
-                    ? 'bg-mission-50/70 border-mission-100'
-                    : 'bg-white/60 border-ink-100/70')
-                }
-              >
-                <img
-                  src={m.avatar}
-                  alt={m.name}
-                  className="w-11 h-11 rounded-xl ring-2 ring-white shadow-sm bg-white object-cover shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[14.5px] font-extrabold text-ink-900 truncate">{m.name}</span>
-                    {m.role === 'leader' && (
-                      <span className="chip-nova !py-0 !px-1.5 !text-[9px]">
-                        <Crown size={9} />
-                        组长
-                      </span>
-                    )}
-                    {isMe && <span className="chip-mission !py-0 !px-1.5 !text-[9px]">我</span>}
+        {members.length === 0 ? (
+          <div className="p-8 text-center text-[13px] text-ink-400">
+            暂时读不到成员名单，请刷新页面重试。
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {members.map((m, idx) => {
+              const isMe = m.id === userId;
+              const earned = earnedByUser[m.id] || 0;
+              const share =
+                personalTotal > 0
+                  ? Math.round((Math.max(0, m.personalCoins || 0) / personalTotal) * 100)
+                  : null;
+
+              return (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.12 + idx * 0.04 }}
+                  className={
+                    'rounded-2xl border p-4 transition-colors ' +
+                    (isMe ? 'bg-mission-50/70 border-mission-100' : 'bg-white/60 border-ink-100/70')
+                  }
+                >
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={m.avatar}
+                      alt={m.name}
+                      className="w-11 h-11 rounded-xl ring-2 ring-white shadow-sm bg-white object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[14.5px] font-extrabold text-ink-900 truncate">{m.name}</span>
+                        {m.role === 'leader' && (
+                          <span className="chip-nova !py-0 !px-1.5 !text-[9px]">
+                            <Crown size={9} />
+                            组长
+                          </span>
+                        )}
+                        {isMe && <span className="chip-mission !py-0 !px-1.5 !text-[9px]">我</span>}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-ink-400 font-medium">
+                        {m.role === 'leader' ? '组长' : '组员'}
+                      </div>
+                    </div>
                   </div>
-                  {contribution != null && (
-                    <div className="mt-0.5 text-[11.5px] text-ink-500 font-medium">
-                      小组贡献 {contribution}%
+
+                  {/* 两个能量指标 */}
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div className="rounded-xl bg-white/70 border border-ink-100/70 px-3 py-2">
+                      <div className="text-[10.5px] text-ink-400 font-medium">个人能量</div>
+                      <div className="text-[16px] font-extrabold text-energy-600 flex items-baseline gap-1">
+                        {m.personalCoins || 0}
+                        <Zap size={11} className="text-energy-500 self-center" />
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/70 border border-ink-100/70 px-3 py-2">
+                      <div className="text-[10.5px] text-ink-400 font-medium">累计获得</div>
+                      <div className="text-[16px] font-extrabold text-mission-600 flex items-baseline gap-1">
+                        {earned}
+                        <Zap size={11} className="text-mission-500 self-center" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 贡献占比：仅在个人能量有意义时显示 */}
+                  {share != null && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-[11px] font-semibold mb-1">
+                        <span className="text-ink-500">个人能量占本组</span>
+                        <span className="text-ink-700 tabular-nums">{share}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-ink-100/80 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-mission-500 to-nova-500"
+                          style={{ width: `${Math.min(100, share)}%` }}
+                        />
+                      </div>
                     </div>
                   )}
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-[15px] font-extrabold text-energy-600 flex items-center gap-1 justify-end">
-                    {m.personalCoins || 0}
-                    <Zap size={12} className="text-energy-500" />
-                  </div>
-                  <div className="text-[10.5px] text-ink-400 font-medium">个人能量</div>
-                </div>
-              </motion.div>
-            );
-          })}
-
-          {members.length === 0 && (
-            <div className="p-8 text-center text-[13px] text-ink-400">
-              暂时读不到成员名单，请刷新页面重试。
-            </div>
-          )}
-        </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </motion.section>
     </div>
   );

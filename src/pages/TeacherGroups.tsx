@@ -22,10 +22,13 @@ import {
   Shield,
   UserMinus,
   LogIn,
+  RotateCcw,
 } from 'lucide-react';
 import MissionShell from '@/components/layout/MissionShell';
 import { useGroupStore } from '@/store/groupStore';
-import { classesApi } from '@/lib/apiService';
+import { useCoinStore } from '@/store/coinStore';
+import { classesApi, usersApi } from '@/lib/apiService';
+import { syncToApi } from '@/lib/syncQueue';
 import { cn } from '@/lib/utils';
 import AvatarStack from '@/components/ui/AvatarStack';
 import type { User, SchoolClass } from '@/data/mockData';
@@ -70,6 +73,7 @@ export default function TeacherGroups() {
   const updateGroupCoins = useGroupStore((s) => s.updateGroupCoins);
   const adjustUserCoins = useGroupStore((s) => s.adjustUserCoins);
   const resetAllGroupCoins = useGroupStore((s) => s.resetAllGroupCoins);
+  const addTx = useCoinStore((s) => s.addTx);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -1098,6 +1102,39 @@ export default function TeacherGroups() {
               >
                 确认{memberCoinMode === 'add' ? '增加' : '扣除'}
               </button>
+            </div>
+
+            {/* 清零累计获得：写入一条 source='reset' 的标记流水，不删历史、不动个人能量 */}
+            <div className="mt-4 pt-4 border-t border-ink-100">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-bold text-ink-700">清零累计获得</div>
+                  <div className="text-[11px] text-ink-400 leading-relaxed mt-0.5">
+                    只把「累计获得」归零，历史流水与个人能量都不受影响
+                  </div>
+                </div>
+                <button
+                  className="shrink-0 px-3.5 py-2 rounded-xl text-[12.5px] font-bold text-ink-600 bg-ink-100 hover:bg-ink-200/70 transition-colors flex items-center gap-1.5"
+                  onClick={() => {
+                    const target = memberCoinTarget;
+                    if (!target.groupId) {
+                      flashToast('该学生尚未加入小组，无法清零');
+                      return;
+                    }
+                    addTx(
+                      target.groupId,
+                      { source: 'reset', refId: `reset-${Date.now()}`, delta: 0, note: `清零「${target.name}」累计获得` },
+                      target.id
+                    );
+                    syncToApi(() => usersApi.resetEarned(target.id), 'users.resetEarned');
+                    flashToast(`已清零 ${target.name} 的累计获得`);
+                    setMemberCoinTarget(null);
+                  }}
+                >
+                  <RotateCcw size={13} />
+                  清零
+                </button>
+              </div>
             </div>
           </div>
         </div>

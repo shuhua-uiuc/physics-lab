@@ -26,7 +26,7 @@ export interface Group {
   contributionRatio: Record<string, number>;
 }
 
-export type CoinSource = 'challenge' | 'project' | 'recruit' | 'teacher_set' | 'penalty' | 'transfer';
+export type CoinSource = 'challenge' | 'project' | 'recruit' | 'teacher_set' | 'penalty' | 'transfer' | 'personal' | 'reset';
 
 export interface CoinTransaction {
   id: string;

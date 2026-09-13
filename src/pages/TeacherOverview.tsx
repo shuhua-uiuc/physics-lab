@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Loader2,
   XCircle,
+  RotateCcw,
   Snowflake,
   Zap,
   BarChart3,
@@ -109,8 +110,10 @@ const SOURCE_CONFIG: Record<CoinSource, { label: string; chip: string; icon: any
   project: { label: '项目', chip: 'chip-growth', icon: FolderKanban },
   recruit: { label: '招募', chip: 'chip-energy', icon: Users },
   teacher_set: { label: '教师发放', chip: 'chip-mission', icon: ArrowRightLeft },
+  personal: { label: '个人调整', chip: 'chip-ink', icon: ArrowRightLeft },
   penalty: { label: '扣罚', chip: 'chip-danger', icon: XCircle },
   transfer: { label: '组间转账', chip: 'chip-nova', icon: ArrowRightLeft },
+  reset: { label: '累计清零', chip: 'chip-alert', icon: RotateCcw },
 };
 
 function SwordsIcon(props: any) {
