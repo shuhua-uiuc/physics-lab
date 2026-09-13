@@ -25,6 +25,7 @@ import {
   Gauge,
   ClipboardList,
   Shield,
+  Menu,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -90,7 +91,7 @@ function RequireAuth({ children, allowRoles }: { children: ReactNode; allowRoles
   return <>{children}</>;
 }
 
-function MissionHeader() {
+function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
   const navigate = useNavigate();
   const { role, logout, userId } = useAuthStore();
   const { getGroupById, getUserById, updateUserAvatar } = useGroupStore();
@@ -120,27 +121,37 @@ function MissionHeader() {
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 h-16 glass-card rounded-none !border-t-0 !border-l-0 !border-r-0 border-b border-mission-100/60 flex items-center px-8"
+      className="fixed top-0 left-0 right-0 z-50 h-16 glass-card rounded-none !border-t-0 !border-l-0 !border-r-0 border-b border-mission-100/60 flex items-center gap-2 px-3 md:gap-4 md:px-8"
     >
-      <div className="flex items-center gap-4 w-[380px]">
-        <div className="relative w-11 h-11 flex items-center justify-center">
+      {/* 移动端汉堡：桌面端已有常驻侧边栏，故隐藏 */}
+      <button
+        onClick={onOpenNav}
+        aria-label="打开导航菜单"
+        className="md:hidden shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-ink-600 hover:bg-mission-50/70 hover:text-mission-600 transition-colors"
+      >
+        <Menu size={20} />
+      </button>
+
+      <div className="flex items-center gap-2.5 md:gap-4 md:w-[380px] min-w-0">
+        <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
           <div className="orbit-ring w-[72px] h-[72px] animate-spin" style={{ animationDuration: '20s' }} />
           <div className="orbit-ring w-[56px] h-[56px] animate-spin" style={{ animationDuration: '14s', animationDirection: 'reverse' }} />
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-mission-400 via-mission-500 to-mission-600 shadow-glowMission flex items-center justify-center relative z-10">
             <div className="w-3 h-3 rounded-full bg-white/90 animate-pulseRing" />
           </div>
         </div>
-        <div className="leading-tight">
-          <div className="text-[15px] font-extrabold text-ink-800 tracking-tight">
-            Physics Mission Control
+        <div className="leading-tight min-w-0">
+          <div className="text-[15px] font-extrabold text-ink-800 tracking-tight truncate">
+            <span className="hidden sm:inline">Physics Mission Control</span>
+            <span className="sm:hidden">物理实验室</span>
           </div>
-          <div className="text-[11px] text-ink-500 font-medium tracking-wide mt-0.5">
+          <div className="hidden sm:block text-[11px] text-ink-500 font-medium tracking-wide mt-0.5">
             PBL Learning Platform · v2.6
           </div>
         </div>
       </div>
 
-      <div className="flex-1 flex justify-center">
+      <div className="flex-1 hidden lg:flex justify-center">
         <div className="glass-card glass-card-hover px-5 py-2.5 flex items-center gap-4 rounded-2xl">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-mission-500 to-nova-500 flex items-center justify-center shadow-lg shadow-mission-500/20">
             <Rocket size={18} className="text-white" />
@@ -163,8 +174,9 @@ function MissionHeader() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 w-[380px] justify-end">
-        <div className="glass-card px-3.5 py-2 rounded-2xl flex items-center gap-2.5 group cursor-pointer">
+      <div className="flex items-center gap-2 md:gap-3 md:w-[380px] justify-end ml-auto shrink-0">
+        {/* 窄屏放不下能量卡，手机上隐藏（能量在 Dashboard / 我的小组里都有） */}
+        <div className="hidden md:flex glass-card px-3.5 py-2 rounded-2xl items-center gap-2.5 group cursor-pointer">
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-energy-400/30 blur-md animate-pulse" />
             <Zap size={18} className="text-energy-500 relative z-10 fill-energy-400/30" />
@@ -196,7 +208,7 @@ function MissionHeader() {
               </div>
             )}
           </div>
-          <div className="chip-nova !py-1 !px-2.5 flex items-center gap-1">
+          <div className="hidden sm:flex chip-nova !py-1 !px-2.5 items-center gap-1">
             <span className="text-[10px] font-black tracking-wider">LV{level}</span>
             <span className="text-[11px] font-semibold">Researcher</span>
           </div>
@@ -276,7 +288,7 @@ function MissionHeader() {
   );
 }
 
-function NavRail() {
+function NavRail({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { role } = useAuthStore();
@@ -290,15 +302,31 @@ function NavRail() {
     : [];
 
   return (
-    <nav
-      className="fixed z-40 glass-card rounded-2xl flex flex-col items-center py-4 gap-1.5"
-      style={{
-        left: '20px',
-        top: '80px',
-        width: '76px',
-        height: 'calc(100vh - 100px)',
-      }}
-    >
+    <>
+      {/* 移动端抽屉遮罩：点击关闭 */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+            className="fixed inset-0 z-40 bg-ink-900/40 backdrop-blur-sm md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <nav
+        className={cn(
+          'fixed z-50 glass-card flex flex-col py-4 gap-1.5 transition-transform duration-300 ease-out',
+          // 桌面：常驻左侧竖排图标条
+          'md:left-5 md:top-20 md:w-[76px] md:h-[calc(100vh-100px)] md:items-center md:rounded-2xl md:translate-x-0',
+          // 移动：左侧抽屉。触屏没有 hover，所以文字标签必须常显（桌面靠悬停气泡）
+          'left-0 top-0 h-full w-[248px] items-stretch px-3 rounded-r-3xl',
+          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        )}
+      >
       {[...baseItems, ...adminItems].map((item, idx) => {
         const Icon = item.icon;
         const active = location.pathname.startsWith(item.to) || (idx === 0 && location.pathname === '/');
@@ -311,12 +339,16 @@ function NavRail() {
             onMouseLeave={() => setHovered(null)}
           >
             <button
-              onClick={() => navigate(item.to)}
-              className={`relative w-[56px] h-[56px] rounded-2xl flex items-center justify-center transition-all duration-300 group ${
+              onClick={() => { navigate(item.to); onClose(); }}
+              aria-label={item.label}
+              className={cn(
+                'relative rounded-2xl flex items-center transition-all duration-300 group',
+                'gap-3 px-3 h-12 w-full justify-start',
+                'md:w-[56px] md:h-[56px] md:px-0 md:justify-center',
                 active
-                  ? 'bg-gradient-to-br from-mission-400 via-mission-500 to-mission-600 text-white shadow-glowMission scale-105'
+                  ? 'bg-gradient-to-br from-mission-400 via-mission-500 to-mission-600 text-white shadow-glowMission md:scale-105'
                   : 'text-ink-400 hover:text-mission-600 hover:bg-mission-50/60'
-              }`}
+              )}
             >
               {active && (
                 <>
@@ -324,7 +356,8 @@ function NavRail() {
                   <div className="absolute -left-1 w-1 h-6 rounded-r-full bg-gradient-to-b from-mission-300 to-nova-400" />
                 </>
               )}
-              <Icon size={22} strokeWidth={active ? 2.4 : 2} className="relative z-10" />
+              <Icon size={22} strokeWidth={active ? 2.4 : 2} className="relative z-10 shrink-0" />
+              <span className="md:hidden relative z-10 text-[13.5px] font-bold truncate">{item.label}</span>
             </button>
 
             <AnimatePresence>
@@ -354,6 +387,7 @@ function NavRail() {
         <Zap size={20} className="text-energy-500 group-hover:scale-110 transition-transform" />
       </div>
     </nav>
+    </>
   );
 }
 
@@ -496,6 +530,8 @@ function ToastStack() {
 export default function MissionShell({ children, requireAuth = true }: MissionShellProps) {
   const location = useLocation();
   const { userId, init } = useAuthStore();
+  // 移动端抽屉开合；桌面端导航常驻，此状态不影响布局
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     init();
@@ -509,26 +545,26 @@ export default function MissionShell({ children, requireAuth = true }: MissionSh
   return (
     <RequireAuth allowRoles={allowRoles}>
       <div className="min-h-screen w-full relative">
-        <MissionHeader />
-        <NavRail />
+        <MissionHeader onOpenNav={() => setNavOpen(true)} />
+        <NavRail open={navOpen} onClose={() => setNavOpen(false)} />
         <ToastStack />
 
-        <main
-          style={{ marginLeft: '120px', padding: '80px 32px 40px' }}
-          className="max-w-[1440px] mx-auto w-full box-border"
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              className="min-h-[calc(100vh-140px)]"
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+        {/* 移动端不留左侧空间、内边距收窄；桌面端为常驻导航让出 120px */}
+        <main className="md:ml-[120px] px-4 md:px-8 pt-[72px] md:pt-20 pb-10">
+          <div className="max-w-[1440px] mx-auto w-full box-border">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                className="min-h-[calc(100vh-140px)]"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </main>
       </div>
     </RequireAuth>
