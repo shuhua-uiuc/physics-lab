@@ -56,11 +56,17 @@ interface ProjectState {
   ) => void;
   markSafetyPass: (projectId: string, userId: string) => void;
   addShowcaseItem: (item: PartialShowcaseItem) => ShowcaseItem;
-  /** 修改本组作品；改后状态置回 pending（需重新审批） */
+  /**
+   * 修改作品。学生改本组作品后状态置回 pending（需重新审批）；
+   * 教师/管理员改则传 keepStatus=true 保留原状态（本人就是审批人）。
+   */
   updateShowcaseItem: (
     id: string,
-    patch: Partial<Pick<ShowcaseItem, 'title' | 'coverImage' | 'description'>>
+    patch: Partial<Pick<ShowcaseItem, 'title' | 'coverImage' | 'description'>>,
+    keepStatus?: boolean
   ) => void;
+  /** 教师/管理员下架作品；已奖励的能量币不回滚 */
+  deleteShowcaseItem: (id: string) => void;
   /** 教师审批：approve 可带 coins 奖励该小组，reject 必带 reason */
   reviewShowcaseItem: (
     id: string,
@@ -394,11 +400,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       return item;
     },
 
-    updateShowcaseItem: (id, patch) => {
+    updateShowcaseItem: (id, patch, keepStatus = false) => {
       const { projects, recruitments, showcaseItems } = get();
-      // 本地乐观更新：改任何内容都置回待审批、清掉上次驳回理由（与后端一致）
+      // 本地乐观更新：学生改要重新送审（置回 pending、清驳回理由），教师改保留原状态
       const next = showcaseItems.map((s) =>
-        s.id === id ? { ...s, ...patch, status: 'pending' as const, rejectReason: '' } : s
+        s.id === id
+          ? keepStatus
+            ? { ...s, ...patch }
+            : { ...s, ...patch, status: 'pending' as const, rejectReason: '' }
+          : s
       );
       persist(projects, recruitments, next);
       set({ showcaseItems: next });
@@ -407,6 +417,18 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         const fresh = await showcaseApi.list();
         set({ showcaseItems: reviveShowcaseDates(fresh) });
       }, 'showcase.update');
+    },
+
+    deleteShowcaseItem: (id) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = showcaseItems.filter((s) => s.id !== id);
+      persist(projects, recruitments, next);
+      set({ showcaseItems: next });
+      syncToApi(async () => {
+        await showcaseApi.remove(id);
+        const fresh = await showcaseApi.list();
+        set({ showcaseItems: reviveShowcaseDates(fresh) });
+      }, 'showcase.delete');
     },
 
     reviewShowcaseItem: (id, action, coins, reason) => {

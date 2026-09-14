@@ -370,11 +370,16 @@ def update_showcase(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    """学生修改本组作品（教师/管理员也可改）。改完必须重新审批。"""
+    """学生修改本组作品（教师/管理员也可改）。
+
+    学生改完必须重新审批（置回 pending）；**教师/管理员改则保留原状态**——
+    教师本人就是审批人，把他的修改打回待审批会让已通过的作品无故下线。
+    """
     item = db.get(ShowcaseItem, showcase_id)
     if not item:
         raise HTTPException(status_code=404, detail="展示不存在")
-    if current.account_role not in ("teacher", "admin") and current.group_id != item.group_id:
+    is_teacher = current.account_role in ("teacher", "admin")
+    if not is_teacher and current.group_id != item.group_id:
         raise HTTPException(status_code=403, detail="只能修改本组的作品")
 
     if payload.title is not None:
@@ -383,13 +388,33 @@ def update_showcase(
         item.cover_image = payload.coverImage
     if payload.description is not None:
         item.description = payload.description
-    # 任何修改都要重新送审：置回待审批并清掉上一次的驳回理由
-    item.status = "pending"
-    item.reject_reason = ""
+    if not is_teacher:
+        # 任何修改都要重新送审：置回待审批并清掉上一次的驳回理由
+        item.status = "pending"
+        item.reject_reason = ""
 
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.delete("/showcase/{showcase_id}")
+def delete_showcase(
+    showcase_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """教师/管理员下架作品。
+
+    只删展示条目——已发出去的奖励能量币**不回滚**（那笔账已在流水里，
+    撤回会让小组余额凭空变动，也可能把它扣成负数）。
+    """
+    item = db.get(ShowcaseItem, showcase_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="展示不存在")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/showcase/{showcase_id}/review", response_model=ShowcaseOut)
