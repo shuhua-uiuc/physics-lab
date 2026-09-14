@@ -210,13 +210,8 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
               {todayStr} · <span className="text-mission-600">特色班</span>
             </div>
           </div>
-          <div className="w-px h-8 bg-gradient-to-b from-transparent via-mission-200/50 to-transparent" />
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-24 rounded-full bg-ink-100 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-mission-400 via-mission-500 to-nova-500" style={{ width: '82%' }} />
-            </div>
-            <span className="chip-mission !py-1 !px-2.5">Today 82%</span>
-          </div>
+          {/* 这里原有一个写死的 "Today 82%" 进度条与徽章——对所有角色、任何时候都显示
+              82%，且与首页真实的「今日任务进度」重复，已移除。 */}
         </div>
       </div>
 
