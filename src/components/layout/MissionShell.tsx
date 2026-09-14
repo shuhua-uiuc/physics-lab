@@ -120,6 +120,7 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
   });
 
   return (
+    <>
     <header
       className="fixed top-0 left-0 right-0 z-50 h-16 glass-card rounded-none !border-t-0 !border-l-0 !border-r-0 border-b border-mission-100/60 flex items-center gap-2 px-3 md:gap-4 md:px-8"
     >
@@ -225,10 +226,15 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
           <LogOut size={16} />
         </button>
       </div>
+      </header>
 
+      {/* 头像弹窗必须放在 <header> 之外：header 用了 glass-card（backdrop-filter），
+          而 backdrop-filter 会让该元素成为内部 position:fixed 的定位基准——弹窗会被
+          「困」在 64px 高的 header 里，垂直居中后被顶出屏幕（实测 top:-125px）。
+          加 max-h + overflow-y-auto 兜底矮屏。 */}
       {showAvatarModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg text-ink-800">选择头像</h3>
               <button
@@ -284,7 +290,7 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
           </div>
         </div>
       )}
-    </header>
+    </>
   );
 }
 
