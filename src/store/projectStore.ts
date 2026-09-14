@@ -56,6 +56,18 @@ interface ProjectState {
   ) => void;
   markSafetyPass: (projectId: string, userId: string) => void;
   addShowcaseItem: (item: PartialShowcaseItem) => ShowcaseItem;
+  /** 修改本组作品；改后状态置回 pending（需重新审批） */
+  updateShowcaseItem: (
+    id: string,
+    patch: Partial<Pick<ShowcaseItem, 'title' | 'coverImage' | 'description'>>
+  ) => void;
+  /** 教师审批：approve 可带 coins 奖励该小组，reject 必带 reason */
+  reviewShowcaseItem: (
+    id: string,
+    action: 'approve' | 'reject',
+    coins?: number,
+    reason?: string
+  ) => void;
   toggleShowcaseLove: (showcaseId: string, userId: any) => void;
   getProjectById: (projectId: string) => Project | undefined;
   getRecruitmentsByProject: (projectId: string) => Recruitment[];
@@ -360,6 +372,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         loves: 0,
         lovedBy: [],
         createdAt: new Date(),
+        // 本地乐观新增即为待审批，与后端 create 行为一致
+        status: 'pending',
+        rejectReason: '',
+        awardedCoins: 0,
       };
       const next = [...showcaseItems, item];
       persist(projects, recruitments, next);
@@ -376,6 +392,42 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({ showcaseItems: reviveShowcaseDates(fresh) });
       }, 'showcase.create');
       return item;
+    },
+
+    updateShowcaseItem: (id, patch) => {
+      const { projects, recruitments, showcaseItems } = get();
+      // 本地乐观更新：改任何内容都置回待审批、清掉上次驳回理由（与后端一致）
+      const next = showcaseItems.map((s) =>
+        s.id === id ? { ...s, ...patch, status: 'pending' as const, rejectReason: '' } : s
+      );
+      persist(projects, recruitments, next);
+      set({ showcaseItems: next });
+      syncToApi(async () => {
+        await showcaseApi.update(id, patch);
+        const fresh = await showcaseApi.list();
+        set({ showcaseItems: reviveShowcaseDates(fresh) });
+      }, 'showcase.update');
+    },
+
+    reviewShowcaseItem: (id, action, coins, reason) => {
+      const { projects, recruitments, showcaseItems } = get();
+      const next = showcaseItems.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: (action === 'approve' ? 'approved' : 'rejected') as ShowcaseItem['status'],
+              rejectReason: action === 'reject' ? reason || '' : '',
+              awardedCoins: action === 'approve' ? coins || 0 : s.awardedCoins,
+            }
+          : s
+      );
+      persist(projects, recruitments, next);
+      set({ showcaseItems: next });
+      syncToApi(async () => {
+        await showcaseApi.review(id, { action, coins, reason });
+        // 通过时会奖励小组能量币，必须重拉 groups/coinTxs，否则能量与流水要手动刷新才变
+        if (action === 'approve') await refetchAfterSettlement();
+      }, 'showcase.review');
     },
 
     toggleShowcaseLove: (showcaseId, userId) => {

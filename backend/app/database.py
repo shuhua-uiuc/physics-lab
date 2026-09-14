@@ -58,3 +58,17 @@ def _run_lightweight_migrations() -> None:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE groups ADD COLUMN class_id VARCHAR"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_groups_class_id ON groups (class_id)"))
+
+    # 成果展览馆的教师审批字段。加 status 的同时把存量作品标为 approved：
+    # 它们在旧模型下本就是直接公开展示的，不该因为这次改动突然变成"待审批"。
+    if "showcase_items" in inspector.get_table_names():
+        sc_columns = {col["name"] for col in inspector.get_columns("showcase_items")}
+        with engine.begin() as conn:
+            if "status" not in sc_columns:
+                conn.execute(text("ALTER TABLE showcase_items ADD COLUMN status VARCHAR DEFAULT 'pending'"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_showcase_items_status ON showcase_items (status)"))
+                conn.execute(text("UPDATE showcase_items SET status = 'approved'"))
+            if "reject_reason" not in sc_columns:
+                conn.execute(text("ALTER TABLE showcase_items ADD COLUMN reject_reason TEXT DEFAULT ''"))
+            if "awarded_coins" not in sc_columns:
+                conn.execute(text("ALTER TABLE showcase_items ADD COLUMN awarded_coins INTEGER DEFAULT 0"))

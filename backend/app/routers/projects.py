@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import services
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, require_teacher
 from ..models import Group, Project, Recruitment, ShowcaseItem, User
 from ..schemas import (
     AssignRequest,
@@ -20,6 +20,8 @@ from ..schemas import (
     ResolveRequest,
     ShowcaseCreate,
     ShowcaseOut,
+    ShowcaseReview,
+    ShowcaseUpdate,
 )
 
 router = APIRouter(prefix="/api", tags=["projects"])
@@ -350,8 +352,83 @@ def create_showcase(payload: ShowcaseCreate, db: Session = Depends(get_db), _: U
         loves=0,
         loved_by=[],
         created_at=datetime.now(timezone.utc),
+        # 新上传一律待审批：通过后才算正式展出（教师可在审批时奖励能量币）
+        status="pending",
+        reject_reason="",
+        awarded_coins=0,
     )
     db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put("/showcase/{showcase_id}", response_model=ShowcaseOut)
+def update_showcase(
+    showcase_id: str,
+    payload: ShowcaseUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """学生修改本组作品（教师/管理员也可改）。改完必须重新审批。"""
+    item = db.get(ShowcaseItem, showcase_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="展示不存在")
+    if current.account_role not in ("teacher", "admin") and current.group_id != item.group_id:
+        raise HTTPException(status_code=403, detail="只能修改本组的作品")
+
+    if payload.title is not None:
+        item.title = payload.title
+    if payload.coverImage is not None:
+        item.cover_image = payload.coverImage
+    if payload.description is not None:
+        item.description = payload.description
+    # 任何修改都要重新送审：置回待审批并清掉上一次的驳回理由
+    item.status = "pending"
+    item.reject_reason = ""
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.post("/showcase/{showcase_id}/review", response_model=ShowcaseOut)
+def review_showcase(
+    showcase_id: str,
+    payload: ShowcaseReview,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_teacher),
+):
+    """教师审批作品。通过时可奖励该小组能量币；驳回时必须写明理由。"""
+    item = db.get(ShowcaseItem, showcase_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="展示不存在")
+
+    if payload.action == "approve":
+        item.status = "approved"
+        item.reject_reason = ""
+        coins = max(0, payload.coins or 0)
+        if coins > 0:
+            # add_tx 会同时更新 group.total_coins 并写入流水，但不提交——由这里统一 commit
+            services.add_tx(
+                db,
+                item.group_id,
+                source="showcase",
+                ref_id=item.id,
+                delta=coins,
+                note=f"成果「{item.title}」通过奖励",
+                user_id=current.id,
+            )
+            item.awarded_coins = coins
+    elif payload.action == "reject":
+        reason = (payload.reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="驳回时必须填写理由")
+        item.status = "rejected"
+        item.reject_reason = reason
+    else:
+        raise HTTPException(status_code=400, detail="action 只能是 approve 或 reject")
+
     db.commit()
     db.refresh(item)
     return item

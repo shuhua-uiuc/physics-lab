@@ -166,6 +166,16 @@ export const showcaseApi = {
   }) => api.post<ShowcaseItem>('/api/showcase', payload),
   toggleLove: (showcaseId: string) =>
     api.post<ShowcaseItem>(`/api/showcase/${showcaseId}/love`),
+  /** 学生修改本组作品（改后后端会置回待审批） */
+  update: (
+    showcaseId: string,
+    payload: { title?: string; coverImage?: string; description?: string }
+  ) => api.put<ShowcaseItem>(`/api/showcase/${showcaseId}`, payload),
+  /** 教师审批：通过时可带 coins 奖励该小组；驳回时必须带 reason */
+  review: (
+    showcaseId: string,
+    payload: { action: 'approve' | 'reject'; coins?: number; reason?: string }
+  ) => api.post<ShowcaseItem>(`/api/showcase/${showcaseId}/review`, payload),
 };
 
 // ---------- Coins / Rankings / Meta ----------

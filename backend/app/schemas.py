@@ -376,6 +376,28 @@ class ShowcaseOut(CamelModel):
     loves: int
     loved_by: list[str]
     created_at: datetime
+    status: str
+    reject_reason: str
+    awarded_coins: int
+
+
+class ShowcaseUpdate(BaseModel):
+    """学生修改本组作品。修改后前端/后端都会把状态重置回 pending（需重新审批）。
+
+    与其它请求模型一致：不继承 CamelModel，字段直接用字面 camelCase。
+    """
+
+    title: str | None = None
+    coverImage: str | None = None
+    description: str | None = None
+
+
+class ShowcaseReview(BaseModel):
+    """教师审批。action=approve 时可带 coins 奖励该小组能量币；reject 时必须带 reason。"""
+
+    action: str  # approve | reject
+    coins: int | None = None
+    reason: str | None = ""
 
 
 # ---------- Rankings / Meta ----------

@@ -190,6 +190,11 @@ class ShowcaseItem(Base):
     loves: Mapped[int] = mapped_column(Integer, default=0)
     loved_by: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # 教师审批：pending / approved / rejected。新上传一律 pending，教师通过后才公开展示
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    reject_reason: Mapped[str] = mapped_column(Text, default="")
+    # 审批通过时奖给该小组的能量币（同时已通过 add_tx 计入小组总能量与流水）
+    awarded_coins: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ClassMeta(Base):

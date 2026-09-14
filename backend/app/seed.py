@@ -431,6 +431,10 @@ def build_showcase(db: Session, projects: list[Project], groups: list[Group]) ->
                 loves=8 + i * 3,
                 loved_by=[],
                 created_at=_now() - timedelta(days=i + 1),
+                # 种子作品视为已通过审批，避免全新库一上来全是"待审批"
+                status="approved",
+                reject_reason="",
+                awarded_coins=0,
             )
         )
 

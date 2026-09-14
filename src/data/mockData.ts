@@ -167,6 +167,12 @@ export interface ShowcaseItem {
   loves: number;
   lovedBy: string[];
   createdAt: Date;
+  /** 教师审批状态：新上传为 pending，通过后才算正式展出 */
+  status: 'pending' | 'approved' | 'rejected';
+  /** 仅 status==='rejected' 时有值 */
+  rejectReason: string;
+  /** 审批通过时奖给该小组的能量币 */
+  awardedCoins: number;
 }
 
 export interface ClassMeta {
@@ -579,6 +585,10 @@ function buildShowcase(projects: Project[], groups: Group[]): ShowcaseItem[] {
     loves: 8 + i * 3,
     lovedBy: [],
     createdAt: new Date(Date.now() - (i + 1) * 86400000),
+    // 离线演示数据视为已通过审批
+    status: 'approved' as const,
+    rejectReason: '',
+    awardedCoins: 0,
   }));
 }
 

@@ -40,6 +40,7 @@ import AdminConsole from '@/pages/AdminConsole';
 import StudentRoster from '@/pages/StudentRoster';
 import TeacherSafety from '@/pages/TeacherSafety';
 import TeacherQuestionBank from '@/pages/TeacherQuestionBank';
+import TeacherShowcaseReview from '@/pages/TeacherShowcaseReview';
 import GroupCommunicator from '@/pages/GroupCommunicator';
 
 import QuizPage from '@/pages/QuizPage';
@@ -373,6 +374,16 @@ export default function App() {
             <TeacherOnly>
               <MissionShell>
                 <TeacherQuestionBank />
+              </MissionShell>
+            </TeacherOnly>
+          }
+        />
+        <Route
+          path="/teacher/showcase"
+          element={
+            <TeacherOnly>
+              <MissionShell>
+                <TeacherShowcaseReview />
               </MissionShell>
             </TeacherOnly>
           }

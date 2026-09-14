@@ -18,6 +18,7 @@ import {
   Upload,
   X,
   Plus,
+  Pencil,
 } from 'lucide-react';
 import {
   LineChart as ReLineChart,
@@ -77,6 +78,10 @@ interface ShowcaseCard {
   spanRows: number;
   spanCols: number;
   authorId: string;
+  /** 教师审批状态；只有本组作品会在卡片上显示徽章 */
+  status: 'pending' | 'approved' | 'rejected';
+  rejectReason: string;
+  awardedCoins: number;
 }
 
 const PHYSICS_IMAGES = [
@@ -100,12 +105,9 @@ const PHYSICS_IMAGES = [
   'https://images.unsplash.com/photo-1594812470835-245e7e979070?w=800&q=80',
 ];
 
-
-const GROUP_NAMES6 = ['牛顿先锋队', '麦克斯韦闪电队', '爱因斯坦脑洞组', '特斯拉电流团', '伽利略观测站', '薛定谔猫队'];
-
 export default function AchievementHall() {
   const { groups, users } = useGroupStore();
-  const { showcaseItems, projects, addShowcaseItem } = useProjectStore();
+  const { showcaseItems, projects, addShowcaseItem, updateShowcaseItem } = useProjectStore();
   const { groupId, userId } = useAuthStore();
 
   // 名人堂 = 真实 showcaseItems 点赞最高的前 3
@@ -118,7 +120,7 @@ export default function AchievementHall() {
         .map((s, i) => ({
           id: s.id,
           rank: i + 1,
-          imageUrl: s.coverImage || 'https://images.unsplash.com/photo-1551985974-b826bc6379f5?w=600&q=80',
+          imageUrl: s.coverImage,
           title: s.title || '优秀成果',
           author: groups.find((g) => g.id === s.groupId)?.name || '学生团队',
           authorId: '',
@@ -154,6 +156,21 @@ export default function AchievementHall() {
     description: '',
     imageUrl: '',
   });
+  // 非空表示正在修改这条作品（本组的），而不是新建
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  /** 打开修改弹窗并预填现有内容 */
+  const openEdit = (card: { id: string; title: string; imageUrl: string; groupId: string }) => {
+    const item = showcaseItems.find((s) => s.id === card.id);
+    setEditingId(card.id);
+    setUploadForm({
+      type: 'photo',
+      title: item?.title || card.title,
+      description: item?.description || '',
+      imageUrl: item?.coverImage || card.imageUrl || '',
+    });
+    setUploadDialogOpen(true);
+  };
 
   const toggleLove = (id: string) => {
     setLovedCards((prev) => {
@@ -179,16 +196,26 @@ export default function AchievementHall() {
     if (!uploadForm.title.trim()) return pushToast('请填写作品标题', 'warning');
     if (!uploadForm.imageUrl) return pushToast('请上传图片', 'warning');
     if (!groupId) return pushToast('请先登录', 'warning');
-    
-    addShowcaseItem({
-      title: uploadForm.title.trim(),
-      coverImage: uploadForm.imageUrl,
-      groupId,
-      description: uploadForm.description.trim(),
-    });
-    
-    pushToast('作品上传成功！', 'success');
+
+    if (editingId) {
+      updateShowcaseItem(editingId, {
+        title: uploadForm.title.trim(),
+        coverImage: uploadForm.imageUrl,
+        description: uploadForm.description.trim(),
+      });
+      pushToast('已保存，需等待教师重新审批', 'success');
+    } else {
+      addShowcaseItem({
+        title: uploadForm.title.trim(),
+        coverImage: uploadForm.imageUrl,
+        groupId,
+        description: uploadForm.description.trim(),
+      });
+      pushToast('作品已提交，等待教师审批', 'success');
+    }
+
     setUploadDialogOpen(false);
+    setEditingId(null);
     setUploadForm({ type: 'photo', title: '', description: '', imageUrl: '' });
   };
 
@@ -215,6 +242,10 @@ export default function AchievementHall() {
       spanRows: 1,
       spanCols: 1,
       authorId: userId || '',
+      // 审批状态：只有本组的作品才在卡片上显示徽章
+      status: item.status,
+      rejectReason: item.rejectReason,
+      awardedCoins: item.awardedCoins,
     }));
   }, [showcaseItems, userId]);
 
@@ -312,6 +343,8 @@ export default function AchievementHall() {
                     const group = groups.find((g) => g.id === card.groupId);
                     const gi = parseInt(card.groupId.split('-')[1]) - 1;
                     const loved = lovedCards.has(card.id);
+                    // 只有本组的作品才显示审批状态、才允许修改
+                    const isMine = !!groupId && card.groupId === groupId;
                     const groupChipColor = ['chip-mission', 'chip-energy', 'chip-growth', 'chip-nova', 'chip-alert', 'chip-ink'][gi % 6];
                     return (
                       <motion.article
@@ -336,17 +369,31 @@ export default function AchievementHall() {
                             aspectRatio: card.spanCols === 2 ? '16/9' : undefined,
                           }}
                         >
-                          <img
-                            src={card.imageUrl}
-                            alt={card.title}
-                            loading="lazy"
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          />
+                          {/* 图片兜底：coverImage 为空、或加载失败（种子里的 Unsplash 地址在
+                              国内常加载不出来）时露出底层占位图标，避免出现裂图 */}
+                          <ImageIcon size={34} className="absolute inset-0 m-auto text-white/45" />
+                          {card.imageUrl && (
+                            <img
+                              src={card.imageUrl}
+                              alt={card.title}
+                              loading="lazy"
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              className="relative w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            />
+                          )}
                           <div className="absolute inset-0 bg-gradient-to-t from-ink-900/80 via-ink-900/20 to-transparent" />
-                          <div className="absolute top-3 left-3">
+                          <div className="absolute top-3 left-3 flex items-center gap-1.5">
                             <span className={cn(groupChipColor, '!py-0.5 !px-2 !text-[10px] backdrop-blur-md bg-opacity-80')}>
-                              {GROUP_NAMES6[gi % 6]?.slice(0, 4)}
+                              {(group?.name || '未知小组').slice(0, 6)}
                             </span>
+                            {isMine && card.status !== 'approved' && (
+                              <span className={cn(
+                                card.status === 'pending' ? 'chip-energy' : 'chip-danger',
+                                '!py-0.5 !px-2 !text-[10px] backdrop-blur-md'
+                              )}>
+                                {card.status === 'pending' ? '待审批' : '已驳回'}
+                              </span>
+                            )}
                           </div>
                           {card.spanCols === 2 && (
                             <div className="absolute top-3 right-3">
@@ -360,6 +407,11 @@ export default function AchievementHall() {
                             <h3 className="font-bold text-[14px] md:text-[15px] text-white leading-snug drop-shadow-md mb-2">
                               {card.title}
                             </h3>
+                            {isMine && card.status === 'rejected' && card.rejectReason && (
+                              <p className="text-[11.5px] text-danger-100 leading-snug">
+                                驳回理由：{card.rejectReason}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="p-4 flex items-center justify-between">
@@ -385,8 +437,20 @@ export default function AchievementHall() {
                               <span className="ticker tabular-nums">{card.views}</span>
                             </div>
                           </div>
-                          <div className="text-[11px] text-ink-400 font-mono">
-                            #{card.id.split('-')[1]}
+                          <div className="flex items-center gap-2">
+                            <div className="text-[11px] text-ink-400 font-mono">
+                              #{card.id.split('-')[1]}
+                            </div>
+                            {isMine && (
+                              <button
+                                onClick={() => openEdit(card)}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-400 hover:text-mission-600 hover:bg-mission-50 transition"
+                                title="修改本组作品（改后需教师重新审批）"
+                                aria-label={`修改作品 ${card.title}`}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </motion.article>
@@ -427,13 +491,17 @@ export default function AchievementHall() {
                       <div className="absolute -left-1 -top-2 w-8 h-8 rounded-full bg-gradient-to-br from-alert-400 to-energy-500 flex items-center justify-center text-white font-black text-[13px] shadow-lg shadow-energy-500/30 ring-2 ring-white">
                         #{hof.rank}
                       </div>
-                      <div className="rounded-xl overflow-hidden aspect-[16/10] mb-3 ring-1 ring-white/60 shadow-sm">
-                        <img
-                          src={hof.imageUrl}
-                          alt={hof.title}
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="rounded-xl overflow-hidden aspect-[16/10] mb-3 ring-1 ring-white/60 shadow-sm relative bg-gradient-to-br from-mission-400/30 via-nova-400/20 to-energy-400/20 flex items-center justify-center">
+                        <ImageIcon size={26} className="absolute text-white/60" />
+                        {hof.imageUrl && (
+                          <img
+                            src={hof.imageUrl}
+                            alt={hof.title}
+                            loading="lazy"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            className="relative w-full h-full object-cover"
+                          />
+                        )}
                       </div>
                       <h4 className="font-bold text-[13px] text-ink-800 leading-snug mb-1">{hof.title}</h4>
                       <div className="flex items-center justify-between text-[11px] text-ink-500 mb-2">
