@@ -171,14 +171,10 @@ export default function App() {
     }
   }, [initAuth]);
 
-  // 欢迎通知只在登录后按角色展示；未登录/登出时清空，避免在登录页对所有访客可见。
+  // 登出（或未登录）时清空残留提示。登录后不再注入写死的"欢迎通知"——那些消息对
+  // 每个学生每次登录都完全相同，且「+180⚡ 能量币到账」声称了并未发生的入账。
   useEffect(() => {
-    const ui = useUIStore.getState();
-    if (!userId || !role) {
-      ui.clearToasts();
-      return;
-    }
-    ui.setWelcomeToasts(role);
+    if (!userId || !role) useUIStore.getState().clearToasts();
   }, [userId, role]);
 
   return (
