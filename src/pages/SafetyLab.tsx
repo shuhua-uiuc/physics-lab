@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { SafetyCategory } from '@/types';
+import ReactMarkdown from 'react-markdown';
 import { safetyNotices } from '@/data/safetyContent';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +101,8 @@ export default function SafetyLab() {
   const navigate = useNavigate();
   const pushToast = useUIStore((s) => s.pushToast);
   const [activeTip, setActiveTip] = useState<SafetyTip | null>(null);
+  // 点「复习材料」时打开对应领域的完整安全须知
+  const [reviewCategory, setReviewCategory] = useState<SafetyCategory | null>(null);
 
   const [records, setRecords] = useState<SafetyRecord[]>([]);
   useEffect(() => {
@@ -194,36 +197,29 @@ export default function SafetyLab() {
               </div>
               <div className="p-6 max-h-[60vh] overflow-y-auto scroll-thin">
                 <div className="prose prose-sm max-w-none text-ink-700 leading-relaxed">
-                  <p className="text-base mb-4">{activeTip.summary} 这是实验安全中必须牢记的要点。</p>
+                  <p className="text-base mb-4">{activeTip.summary}</p>
                   <div className="p-5 rounded-2xl bg-gradient-to-br from-growth-50/60 via-mission-50/40 to-nova-50/40 border border-mission-100/50">
                     <div className="flex items-center gap-2 mb-3">
                       <ShieldCheck size={18} className="text-growth-600" />
                       <h4 className="font-black text-ink-800 text-base m-0">关键操作要点</h4>
                     </div>
+                    {/* 用该领域真实撰写的要点，替换原先"关于「X」的第 N 条…"的生成套话 */}
                     <ul className="space-y-2 m-0 p-0 list-none">
-                      {[1, 2, 3, 4].map((i) => (
+                      {(safetyNotices[activeTip.category]?.keyPoints || []).map((kp, i) => (
                         <li key={i} className="flex items-start gap-2.5 p-0">
                           <span className="w-5 h-5 rounded-md bg-mission-100 text-mission-600 flex items-center justify-center text-[11px] font-black shrink-0 mt-0.5">
-                            {i}
+                            {i + 1}
                           </span>
-                          <span className="text-sm font-medium text-ink-700 leading-relaxed">
-                            关于「{activeTip.title}」的第 {i} 条详细操作规范与注意事项，确保每一步都符合安全标准。
-                          </span>
+                          <span className="text-sm font-medium text-ink-700 leading-relaxed">{kp}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
-                  <div className="mt-5 p-4 rounded-2xl bg-gradient-to-br from-alert-50/60 to-danger-50/40 border border-alert-200/50">
-                    <div className="flex items-start gap-2.5">
-                      <AlertTriangle size={18} className="text-alert-600 shrink-0 mt-0.5" />
-                      <div>
-                        <h5 className="font-black text-alert-800 text-sm mb-1">⚠️ 常见错误与风险</h5>
-                        <p className="text-sm text-ink-700 leading-relaxed m-0">
-                          切勿忽视本安全规范！历史数据表明，{activeTip.title.split('：')[1] || '此类违规操作'}
-                          是造成实验室事故的主要原因之一，一旦违反将严肃处理。
-                        </p>
-                      </div>
-                    </div>
+                    <button
+                      onClick={() => { setActiveTip(null); setReviewCategory(activeTip.category); }}
+                      className="mt-4 text-[13px] font-bold text-mission-600 hover:text-mission-700 inline-flex items-center gap-1"
+                    >
+                      <BookOpen size={13} />阅读完整《{safetyNotices[activeTip.category]?.title || '安全须知'}》
+                    </button>
                   </div>
                 </div>
               </div>
@@ -231,8 +227,91 @@ export default function SafetyLab() {
                 <button onClick={() => setActiveTip(null)} className="btn-ghost text-sm">
                   关闭
                 </button>
-                <button className="btn-growth !py-2.5 !px-5 !text-sm">
+                <button
+                  onClick={() => {
+                    pushToast(`已标记「${activeTip.title}」为掌握`, 'success');
+                    setActiveTip(null);
+                  }}
+                  className="btn-growth !py-2.5 !px-5 !text-sm"
+                >
                   <CheckCircle2 size={14} /> 我已掌握本要点
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 复习材料：直接展示该领域完整的安全须知（真实内容，来自 data/safetyContent.ts）。
+            原实现只弹一句"已发送至学习中心"的提示，学生实际什么都收不到。 */}
+        {reviewCategory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-ink-900/40 backdrop-blur-sm"
+            onClick={() => setReviewCategory(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.25 }}
+              className="glass-card w-full max-w-2xl max-h-[88vh] rounded-[26px] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-ink-100/80 flex items-center gap-3 shrink-0">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shrink-0">
+                  <ShieldCheck size={20} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-mission-600 tracking-wider uppercase">
+                    复习材料 · 安全须知
+                  </div>
+                  <h3 className="font-black text-[18px] text-ink-900 truncate">
+                    {safetyNotices[reviewCategory]?.title || '安全须知'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setReviewCategory(null)}
+                  className="ml-auto w-8 h-8 rounded-lg hover:bg-ink-100 flex items-center justify-center text-ink-400 shrink-0"
+                  aria-label="关闭复习材料"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto scroll-thin">
+                <div className="prose-safety max-w-none">
+                  <ReactMarkdown>{safetyNotices[reviewCategory]?.content || ''}</ReactMarkdown>
+                </div>
+                <div className="mt-6 p-4 rounded-2xl bg-growth-50 ring-1 ring-growth-200">
+                  <h4 className="font-bold text-growth-800 text-sm mb-2.5 flex items-center gap-2">
+                    <ShieldCheck size={15} />
+                    安全操作要点（记住这些关键规范）
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(safetyNotices[reviewCategory]?.keyPoints || []).map((kp, i) => (
+                      <span key={i} className="chip-growth !text-[12px] !px-3 !py-1.5">
+                        <span className="font-bold mr-1 opacity-70">{i + 1}.</span>
+                        {kp}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-ink-100/80 flex items-center justify-end gap-3 shrink-0">
+                <button onClick={() => setReviewCategory(null)} className="btn-ghost text-sm">
+                  关闭
+                </button>
+                <button
+                  onClick={() => {
+                    pushToast('已标记完成复习', 'success');
+                    setReviewCategory(null);
+                  }}
+                  className="btn-growth !py-2.5 !px-5 !text-sm"
+                >
+                  <CheckCircle2 size={14} /> 已完成复习
                 </button>
               </div>
             </motion.div>
@@ -417,7 +496,7 @@ export default function SafetyLab() {
                           <button className="btn-energy flex-1 !py-2.5 !text-xs !rounded-xl" onClick={() => { pushToast(`进入《${domain.name}》安全考核 · 限时 ${PENDING_EXAMS.find(e => e.category === domain.category)?.timeLimit || 15} 分钟`, 'info'); navigate(`/safety-exam/${domain.category}`); }}>
                             <PlayCircle size={13} /> 参加考核
                           </button>
-                          <button className="btn-ghost !text-xs !rounded-xl !px-3.5 border border-mission-200 text-mission-600" onClick={() => pushToast(`《${domain.name}》复习材料已发送至学习中心 · 请先阅读再考核 📖`, 'info')}>
+                          <button className="btn-ghost !text-xs !rounded-xl !px-3.5 border border-mission-200 text-mission-600" onClick={() => setReviewCategory(domain.category)}>
                             复习材料
                           </button>
                         </>
