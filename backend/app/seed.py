@@ -26,6 +26,7 @@ from .models import (
     User,
 )
 from .security import hash_password
+from .safety_builtin import build_safety_questions
 from .services import gen_id
 
 # 三个班级，每班 5 个小组
@@ -439,6 +440,37 @@ def build_showcase(db: Session, projects: list[Project], groups: list[Group]) ->
         )
 
 
+def ensure_safety_questions(db: Session) -> int:
+    """把内置安全题灌进 questions 表（仅当一道安全题都没有时）。
+
+    为什么要单独一个函数：seed() 在"库里已有 Group"时会提前返回，所以对**已上线的库**
+    它什么都不做；而安全题必须补进去，否则在线模式下学生安全考核会没题可考。
+
+    用"一条都没有"作判断、而不是"缺哪条补哪条"：后者会在教师删掉某道内置题后，
+    每次重启又把它复活。要还原内置题库应走教师端的「恢复默认」按钮。
+
+    返回本次灌入的条数（跳过时为 0）。
+    """
+    if db.query(Question).filter(Question.safety_category.isnot(None)).count() > 0:
+        return 0
+    for raw in build_safety_questions():
+        db.add(
+            Question(
+                id=raw["id"],
+                type=raw["type"],
+                stem=raw["stem"],
+                options=list(raw["options"]),
+                answer=raw["answer"],
+                knowledge_point=raw.get("knowledgePoint", ""),
+                difficulty=raw.get("difficulty", 1),
+                topic_id=None,
+                safety_category=raw["safetyCategory"],
+            )
+        )
+    db.commit()
+    return len(build_safety_questions())
+
+
 def seed(force: bool = False) -> None:
     init_db()
     db = SessionLocal()
@@ -447,6 +479,11 @@ def seed(force: bool = False) -> None:
             print("⚠️  --force：清空所有表并重新灌入…")
             Base.metadata.drop_all(bind=engine)
             Base.metadata.create_all(bind=engine)
+
+        # 放在提前返回之前：对已上线、已有数据的库也要把安全题补齐
+        added = ensure_safety_questions(db)
+        if added:
+            print(f"🛡  已灌入内置安全题 {added} 道（教师端可继续维护）")
 
         if db.query(Group).first() is not None:
             print("✅ 数据库已有数据，跳过种子灌入（如需重置请加 --force）。")

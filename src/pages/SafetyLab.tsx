@@ -22,6 +22,7 @@ import {
 import type { SafetyCategory } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import { safetyNotices } from '@/data/safetyContent';
+import { useSafetyStore } from '@/store/safetyStore';
 import { cn } from '@/lib/utils';
 
 interface SafetyDomain {
@@ -103,6 +104,8 @@ export default function SafetyLab() {
   const [activeTip, setActiveTip] = useState<SafetyTip | null>(null);
   // 点「复习材料」时打开对应领域的完整安全须知
   const [reviewCategory, setReviewCategory] = useState<SafetyCategory | null>(null);
+  // 真实安全题库（在线时来自后端），用于显示各领域实际题数
+  const safetyQuestions = useSafetyStore((s) => s.questions);
 
   const [records, setRecords] = useState<SafetyRecord[]>([]);
   useEffect(() => {
@@ -117,9 +120,13 @@ export default function SafetyLab() {
   }, [records]);
   const domains = SAFETY_DOMAINS.map((d) => {
     const rec = recordsByCat[d.category];
+    // 题数取真实题库（在线时来自后端，教师增减题目这里立即反映）。
+    // 原先写死 totalQuestions: 20，与实际题量（每类 5 道）完全不符。
+    const total = safetyQuestions.filter((q) => q.safetyCategory === d.category).length;
     return {
       ...d,
-      passedQuestions: rec?.passed ? d.totalQuestions : 0,
+      totalQuestions: total || d.totalQuestions,
+      passedQuestions: rec?.passed ? (total || d.totalQuestions) : 0,
       passRate: rec ? rec.score : 0,
       status: (rec ? (rec.passed ? 'passed' : 'review') : 'pending') as SafetyDomain['status'],
     };

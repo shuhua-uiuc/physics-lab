@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import services
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, require_teacher
 from ..models import Challenge, Group, Question, QuizSession, SafetyRecord, Topic, User
 from ..schemas import (
     ChallengeCreate,
@@ -16,10 +16,14 @@ from ..schemas import (
     QuizAnswerRequest,
     QuizSessionOut,
     QuizStartRequest,
+    SafetyImportRequest,
+    SafetyQuestionInput,
+    SafetyQuestionUpdate,
     SafetyRecordCreate,
     SafetyRecordOut,
     TopicOut,
 )
+from ..safety_builtin import build_safety_questions
 
 router = APIRouter(prefix="/api", tags=["theory"])
 
@@ -60,6 +64,141 @@ def list_questions(
     if topic_id:
         q = q.filter(Question.topic_id == topic_id)
     return q.all()
+
+
+# ---------- Safety question bank（教师维护；与理论题共用 questions 表，靠 safety_category 区分） ----------
+def _new_safety_question(payload: SafetyQuestionInput) -> Question:
+    return Question(
+        id=f"sq_{services.gen_id()}",
+        type=payload.type,
+        stem=payload.stem,
+        options=list(payload.options),
+        answer=payload.answer,
+        knowledge_point=payload.knowledgePoint or "",
+        difficulty=payload.difficulty or 1,
+        topic_id=None,  # 安全题不属于任何理论主题
+        safety_category=payload.safetyCategory,
+    )
+
+
+@router.get("/safety/questions", response_model=list[QuestionOut])
+def list_safety_questions(
+    category: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """安全题库。登录即可读——学生安全考核据此出题，教师端据此维护。"""
+    q = db.query(Question).filter(Question.safety_category.isnot(None))
+    if category:
+        q = q.filter(Question.safety_category == category)
+    return q.all()
+
+
+@router.post("/safety/questions", response_model=QuestionOut, status_code=201)
+def create_safety_question(
+    payload: SafetyQuestionInput,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    item = _new_safety_question(payload)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+# 注意：/import 与 /reset 必须声明在 /{question_id} 之前，否则会被路径参数吞掉
+@router.post("/safety/questions/import")
+def import_safety_questions(
+    payload: SafetyImportRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """批量导入。merge=按题干去重后追加；replace=清空现有安全题后整体写入。"""
+    if payload.mode == "replace":
+        db.query(Question).filter(Question.safety_category.isnot(None)).delete(synchronize_session=False)
+        existing_stems: set[str] = set()
+    else:
+        existing_stems = {s for (s,) in db.query(Question.stem).filter(Question.safety_category.isnot(None))}
+
+    imported = 0
+    for q in payload.questions:
+        if q.stem in existing_stems:
+            continue
+        db.add(_new_safety_question(q))
+        existing_stems.add(q.stem)
+        imported += 1
+    db.commit()
+    total = db.query(Question).filter(Question.safety_category.isnot(None)).count()
+    return {"imported": imported, "total": total}
+
+
+@router.post("/safety/questions/reset", response_model=list[QuestionOut])
+def reset_safety_questions(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """恢复内置题库：清空现有安全题后重新灌入内置的 35 道。"""
+    db.query(Question).filter(Question.safety_category.isnot(None)).delete(synchronize_session=False)
+    for raw in build_safety_questions():
+        db.add(
+            Question(
+                id=raw["id"],
+                type=raw["type"],
+                stem=raw["stem"],
+                options=list(raw["options"]),
+                answer=raw["answer"],
+                knowledge_point=raw.get("knowledgePoint", ""),
+                difficulty=raw.get("difficulty", 1),
+                topic_id=None,
+                safety_category=raw["safetyCategory"],
+            )
+        )
+    db.commit()
+    return db.query(Question).filter(Question.safety_category.isnot(None)).all()
+
+
+@router.patch("/safety/questions/{question_id}", response_model=QuestionOut)
+def update_safety_question(
+    question_id: str,
+    payload: SafetyQuestionUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    item = db.get(Question, question_id)
+    if not item or item.safety_category is None:
+        raise HTTPException(status_code=404, detail="安全题不存在")
+    if payload.type is not None:
+        item.type = payload.type
+    if payload.stem is not None:
+        item.stem = payload.stem
+    if payload.options is not None:
+        item.options = list(payload.options)
+    if payload.answer is not None:
+        item.answer = payload.answer
+    if payload.knowledgePoint is not None:
+        item.knowledge_point = payload.knowledgePoint
+    if payload.difficulty is not None:
+        item.difficulty = payload.difficulty
+    if payload.safetyCategory is not None:
+        item.safety_category = payload.safetyCategory
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/safety/questions/{question_id}")
+def delete_safety_question(
+    question_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    item = db.get(Question, question_id)
+    if not item or item.safety_category is None:
+        raise HTTPException(status_code=404, detail="安全题不存在")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
 
 
 # ---------- Quiz ----------

@@ -21,6 +21,7 @@ import { useGroupStore } from '../store/groupStore';
 import { useProjectStore } from '../store/projectStore';
 import { useCoinStore } from '../store/coinStore';
 import { useTheoryStore } from '../store/theoryStore';
+import { useSafetyStore } from '../store/safetyStore';
 import { coinsApi } from './apiService';
 import { reviveDates } from './reviveDates';
 
@@ -77,10 +78,22 @@ export async function bootstrapFromApi(force = false): Promise<void> {
     const topics = pick(rTopics);
     const questions = pick(rQuestions);
     const challenges = pick(rChallenges);
-    if (topics != null || questions != null || challenges != null) {
+
+    // 安全题与理论题共用 questions 表，必须在这里分流：
+    //   - 带 safetyCategory 的 → safetyStore（安全考核用）
+    //   - 其余 → theoryStore（理论题库）
+    // 分流是必须的：QuizPage 有几处兜底直接用 useTheoryStore.questions.slice(0,10)，
+    // 若安全题混进 theoryStore，理论测验可能抽到安全题。
+    const safetyQuestions = questions ? questions.filter((q) => q.safetyCategory) : null;
+    const theoryQuestions = questions ? questions.filter((q) => !q.safetyCategory) : null;
+    if (safetyQuestions != null) {
+      useSafetyStore.setState({ questions: safetyQuestions });
+    }
+
+    if (topics != null || theoryQuestions != null || challenges != null) {
       useTheoryStore.setState({
         ...(topics != null ? { topics } : {}),
-        ...(questions != null ? { questions } : {}),
+        ...(theoryQuestions != null ? { questions: theoryQuestions } : {}),
         ...(challenges != null ? { challenges: reviveDates(challenges, ['deadline']) } : {}),
       });
     }

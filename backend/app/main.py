@@ -26,10 +26,28 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
-    if settings.jwt_secret == _DEV_DEFAULT_JWT_SECRET:
-        import logging
 
-        logging.getLogger("uvicorn.error").warning(
+    # 已有数据的库不会走 seed() 的灌种分支（它在"库里有 Group"时提前返回），
+    # 所以在这里补一次内置安全题。幂等；失败也绝不阻塞启动。
+    import logging
+
+    _log = logging.getLogger("uvicorn.error")
+    try:
+        from .database import SessionLocal
+        from .seed import ensure_safety_questions
+
+        db = SessionLocal()
+        try:
+            added = ensure_safety_questions(db)
+            if added:
+                _log.info("已灌入内置安全题 %d 道", added)
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001  启动期任何异常都不应挡住服务
+        _log.warning("安全题补种失败（不影响启动）：%s", exc)
+
+    if settings.jwt_secret == _DEV_DEFAULT_JWT_SECRET:
+        _log.warning(
             "JWT 密钥仍为开发默认值，任何人可伪造 token；请在 backend/.env 中配置 JWT_SECRET 后重启服务"
         )
 

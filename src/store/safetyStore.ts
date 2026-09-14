@@ -1,14 +1,19 @@
 /**
  * 安全题库 store —— 教师维护安全考核题的单一数据源
  *
- * 数据持久化在 localStorage（键 plab_safety_questions）：
- *  - 首次使用以内置题库 buildSafetyQuestions() 为默认兜底
- *  - 教师新增/编辑/删除/导入后即时落盘，学生安全考核页读取同一份数据
- *  - 「恢复默认」可还原为内置题库
+ * 两种模式：
+ *  - **在线**（配置了 VITE_API_BASE_URL）：数据在**后端** questions 表（靠 safety_category 区分）。
+ *    登录/刷新时由 bootstrapFromApi 拉取注入；写操作为乐观更新 + syncToApi 落库，
+ *    成功后用服务端列表替换。**教师改的题因此能下发到所有学生的设备**。
+ *  - **离线**（未配置）：退回纯 localStorage（键 plab_safety_questions），
+ *    首次使用以内置题库 buildSafetyQuestions() 兜底，仅用于无后端的演示。
  */
 import { create } from 'zustand';
 import { Question, SafetyCategory, loadLS, saveLS } from '../data/mockData';
 import { buildSafetyQuestions } from '../data/safetyContent';
+import { apiEnabled } from '../lib/apiClient';
+import { safetyBankApi } from '../lib/apiService';
+import { syncToApi } from '../lib/syncQueue';
 
 const LS_KEY = 'plab_safety_questions';
 
@@ -95,6 +100,21 @@ export const useSafetyStore = create<SafetyState>((set, get) => ({
     const questions = [...get().questions, question];
     persist(questions);
     set({ questions });
+    if (apiEnabled) {
+      // 乐观更新后再落库；成功后用服务端列表替换（本地临时 id 会被真实 id 取代）
+      syncToApi(async () => {
+        await safetyBankApi.create({
+          type: question.type,
+          stem: question.stem,
+          options: question.options,
+          answer: question.answer,
+          knowledgePoint: question.knowledgePoint,
+          difficulty: question.difficulty,
+          safetyCategory: question.safetyCategory!,
+        });
+        set({ questions: await safetyBankApi.list() });
+      }, 'safety.create');
+    }
     return question;
   },
 
@@ -102,33 +122,72 @@ export const useSafetyStore = create<SafetyState>((set, get) => ({
     const questions = get().questions.map((q) => (q.id === id ? { ...q, ...patch } : q));
     persist(questions);
     set({ questions });
+    if (apiEnabled) {
+      syncToApi(async () => {
+        await safetyBankApi.update(id, patch);
+        set({ questions: await safetyBankApi.list() });
+      }, 'safety.update');
+    }
   },
 
   deleteQuestion: (id) => {
     const questions = get().questions.filter((q) => q.id !== id);
     persist(questions);
     set({ questions });
+    if (apiEnabled) {
+      syncToApi(async () => {
+        await safetyBankApi.remove(id);
+        set({ questions: await safetyBankApi.list() });
+      }, 'safety.delete');
+    }
   },
 
   importQuestions: (raw, mode) => {
     const incoming = normalizeQuestions(raw);
+    let added: number;
     if (mode === 'replace') {
       persist(incoming);
       set({ questions: incoming });
-      return incoming.length;
+      added = incoming.length;
+    } else {
+      // merge：按题干去重，已存在的跳过
+      const existingStems = new Set(get().questions.map((q) => q.stem));
+      const fresh = incoming.filter((q) => !existingStems.has(q.stem));
+      const questions = [...get().questions, ...fresh];
+      persist(questions);
+      set({ questions: questions });
+      added = fresh.length;
     }
-    // merge：按题干去重，已存在的跳过
-    const existingStems = new Set(get().questions.map((q) => q.stem));
-    const fresh = incoming.filter((q) => !existingStems.has(q.stem));
-    const questions = [...get().questions, ...fresh];
-    persist(questions);
-    set({ questions });
-    return fresh.length;
+    if (apiEnabled) {
+      syncToApi(async () => {
+        const res = await safetyBankApi.importQuestions(
+          incoming.map((q) => ({
+            type: q.type,
+            stem: q.stem,
+            options: q.options,
+            answer: q.answer,
+            knowledgePoint: q.knowledgePoint,
+            difficulty: q.difficulty,
+            safetyCategory: q.safetyCategory!,
+          })),
+          mode
+        );
+        set({ questions: await safetyBankApi.list() });
+        return res;
+      }, 'safety.import');
+    }
+    return added;
   },
 
   resetToDefault: () => {
     const questions = buildSafetyQuestions();
     persist(questions);
     set({ questions });
+    if (apiEnabled) {
+      syncToApi(async () => {
+        await safetyBankApi.reset();
+        set({ questions: await safetyBankApi.list() });
+      }, 'safety.reset');
+    }
   },
 }));

@@ -207,6 +207,36 @@ class QuestionOut(CamelModel):
     safety_category: str | None = None
 
 
+# ---------- Safety question bank ----------
+# 安全题与理论题共用 questions 表，靠 safety_category 区分（该列本就是这个用途）。
+# 与其它请求模型一致：不继承 CamelModel，字段直接用字面 camelCase。
+class SafetyQuestionInput(BaseModel):
+    type: str  # single / multiple / judge
+    stem: str
+    options: list[str]
+    answer: Any
+    knowledgePoint: str = ""
+    difficulty: int = 1
+    safetyCategory: str
+
+
+class SafetyQuestionUpdate(BaseModel):
+    """部分更新：只改传入的字段。answer 不会是 None（判断题是 bool、多选是数组），故用它判断"是否提供"。"""
+
+    type: str | None = None
+    stem: str | None = None
+    options: list[str] | None = None
+    answer: Any = None
+    knowledgePoint: str | None = None
+    difficulty: int | None = None
+    safetyCategory: str | None = None
+
+
+class SafetyImportRequest(BaseModel):
+    questions: list[SafetyQuestionInput]
+    mode: str = "merge"  # merge=按题干去重追加；replace=整体替换
+
+
 # ---------- Quiz ----------
 class QuizStartRequest(BaseModel):
     topicId: str

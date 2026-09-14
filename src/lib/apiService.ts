@@ -17,6 +17,7 @@ import type {
   Recruitment,
   ShowcaseItem,
   ClassMeta,
+  SafetyCategory,
 } from '../data/mockData';
 
 // ---------- Auth (self-service) ----------
@@ -207,6 +208,33 @@ export const safetyApi = {
     api.post<SafetyRecord>('/api/safety/records', { category, score, passed }),
   myRecords: () => api.get<SafetyRecord[]>('/api/safety/records'),
 };
+
+/**
+ * 安全题库（服务端权威）。安全题与理论题共用 questions 表，靠 safetyCategory 区分。
+ * 教师端维护的改动经由这里落库，所有学生设备都能取到。
+ */
+export const safetyBankApi = {
+  list: (category?: string) =>
+    api.get<Question[]>(`/api/safety/questions${category ? `?category=${category}` : ''}`),
+  create: (payload: SafetyQuestionPayload) =>
+    api.post<Question>('/api/safety/questions', payload),
+  update: (id: string, patch: Partial<SafetyQuestionPayload>) =>
+    api.patch<Question>(`/api/safety/questions/${id}`, patch),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/api/safety/questions/${id}`),
+  importQuestions: (questions: SafetyQuestionPayload[], mode: 'merge' | 'replace') =>
+    api.post<{ imported: number; total: number }>('/api/safety/questions/import', { questions, mode }),
+  reset: () => api.post<Question[]>('/api/safety/questions/reset'),
+};
+
+export interface SafetyQuestionPayload {
+  type: Question['type'];
+  stem: string;
+  options: string[];
+  answer: Question['answer'];
+  knowledgePoint?: string;
+  difficulty?: number;
+  safetyCategory: SafetyCategory;
+}
 
 export const coinsApi = {
   transactions: (groupId?: string) =>

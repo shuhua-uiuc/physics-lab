@@ -64,6 +64,17 @@ export default function SafetyExam() {
 
   const notice = examCategory ? safetyNotices[examCategory] : null;
 
+  // 该领域实际可出的题量。安全题现在来自后端（bootstrap 已把 safetyCategory 的题
+  // 分流进 safetyStore），理论题里不会再有安全题——这里合并两边按 id 去重，避免将来
+  // 分流策略变化时又算错。用于替换原先写死的"考核 10 题"。
+  const availableCount = useMemo(() => {
+    if (!examCategory) return 0;
+    const ids = new Set<string>();
+    for (const q of theoryQuestions) if (q.safetyCategory === examCategory) ids.add(q.id);
+    for (const q of safetyQuestions) if (q.safetyCategory === examCategory) ids.add(q.id);
+    return ids.size;
+  }, [examCategory, theoryQuestions, safetyQuestions]);
+
   useEffect(() => {
     if (step !== 'quiz' || questions.length > 0 || !examCategory) return;
     let pool = theoryQuestions.filter((q) => q.safetyCategory === examCategory);
@@ -154,7 +165,7 @@ export default function SafetyExam() {
             <h2 className="font-serif text-lg font-semibold text-mission-900 truncate">{project ? project.title : `${CATEGORY_LABEL[examCategory]}安全考核`}</h2>
             <div className="flex flex-wrap gap-2 mt-1">
               <span className="chip chip-mission">{CATEGORY_LABEL[examCategory]}安全</span>
-              <span className="chip chip-ink">考核 10 题 · 80 分通过</span>
+              <span className="chip chip-ink">考核 {questions.length || availableCount} 题 · 80 分通过</span>
             </div>
           </div>
         </div>
