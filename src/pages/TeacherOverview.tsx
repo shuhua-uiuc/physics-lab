@@ -49,7 +49,7 @@ import { useQuestionBankStore } from '@/store/questionBankStore';
 import { bootstrapFromApi } from '@/lib/bootstrap';
 import { classesApi } from '@/lib/apiService';
 import { CoinSource, ProjectStatus, ReviewableQuestion, SchoolClass } from '@/data/mockData';
-import { cn } from '@/lib/utils';
+import { cn, formatAxisTick } from '@/lib/utils';
 
 type TabKey = 'overview' | 'coins' | 'safety' | 'analytics';
 
@@ -342,7 +342,7 @@ export default function TeacherOverview() {
                   <ReLineChart data={coinTrend} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                     <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} interval={5} />
-                    <YAxis tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} width={40} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />
+                    <YAxis tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false} width={40} tickFormatter={formatAxisTick} />
                     <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.96)' }} />
                     <Line type="monotone" dataKey="value" stroke="#4F7CFF" strokeWidth={2} dot={false} />
                   </ReLineChart>
@@ -525,7 +525,7 @@ export default function TeacherOverview() {
                               </defs>
                               <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} tickLine={false} axisLine={false} interval={0} tickFormatter={(v: string) => (v.length > 6 ? `${v.slice(0, 6)}…` : v)} />
-                              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={formatAxisTick} />
                               <Tooltip
                                 contentStyle={{
                                   borderRadius: 12,

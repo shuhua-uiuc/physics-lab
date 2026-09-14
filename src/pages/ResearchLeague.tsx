@@ -22,7 +22,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useCoinStore } from '@/store/coinStore';
 import { classesApi } from '@/lib/apiService';
 import { SchoolClass } from '@/data/mockData';
-import { cn } from '@/lib/utils';
+import { cn, formatAxisTick } from '@/lib/utils';
 
 type TabKey = 'total' | 'month' | 'week' | 'personal';
 
@@ -308,7 +308,7 @@ export default function ResearchLeague() {
                       tickLine={false}
                       axisLine={false}
                       width={42}
-                      tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                      tickFormatter={formatAxisTick}
                     />
                     <Tooltip
                       contentStyle={{
