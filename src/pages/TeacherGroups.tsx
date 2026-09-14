@@ -94,6 +94,27 @@ export default function TeacherGroups() {
     setTimeout(() => setToastMsg(null), 2400);
   };
 
+  // 删除待分配学生。后端 DELETE /api/students/{id} 已存在（仅教师可用），
+  // 这里只是补一个入口——此后端同时会删掉该生的能量流水记录，故需二次确认。
+  const [deleteStudent, setDeleteStudent] = useState<{ id: string; name: string } | null>(null);
+  const [deletingStudent, setDeletingStudent] = useState(false);
+
+  const handleDeleteStudent = async () => {
+    if (!deleteStudent) return;
+    setDeletingStudent(true);
+    try {
+      await classesApi.deleteStudent(deleteStudent.id);
+      const fresh = await usersApi.list();
+      useGroupStore.setState({ users: fresh });
+      flashToast(`🗑 已删除学生「${deleteStudent.name}」`);
+      setDeleteStudent(null);
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setDeletingStudent(false);
+    }
+  };
+
   const usersByGroup = useMemo(() => {
     const map: Record<string, User[]> = {};
     for (const u of users) {
@@ -352,6 +373,14 @@ export default function TeacherGroups() {
                             <option key={g.id} value={g.id}>{g.name}</option>
                           ))}
                         </select>
+                        <button
+                          onClick={() => setDeleteStudent({ id: u.id, name: u.name })}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-400 hover:text-danger-600 hover:bg-danger-50 transition shrink-0"
+                          title="删除该学生"
+                          aria-label={`删除学生 ${u.name}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1065,6 +1094,36 @@ export default function TeacherGroups() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* 删除待分配学生（不可恢复，二次确认） */}
+      {deleteStudent && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4" onClick={() => setDeleteStudent(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-danger-400 to-alert-500 flex items-center justify-center text-white"><AlertTriangle size={20} /></div>
+              <div>
+                <h3 className="font-extrabold text-[17px] text-ink-900">删除学生</h3>
+                <p className="text-[12px] text-ink-500">{deleteStudent.name}</p>
+              </div>
+              <button onClick={() => setDeleteStudent(null)} className="ml-auto w-8 h-8 rounded-lg hover:bg-ink-100 flex items-center justify-center text-ink-400"><X size={16} /></button>
+            </div>
+            <p className="text-[12.5px] text-ink-600 leading-relaxed mb-5">
+              将删除该学生账号，<b className="text-danger-600">并连带删除其能量币流水记录</b>，删除后不可恢复。
+              若只是想让他换组，请改用「分配到…」。
+            </p>
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={() => setDeleteStudent(null)}>取消</button>
+              <button
+                className="flex-1 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-br from-danger-400 to-danger-600 disabled:opacity-60"
+                onClick={handleDeleteStudent}
+                disabled={deletingStudent}
+              >
+                {deletingStudent ? '删除中…' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 调整个人能量币 */}
       {memberCoinTarget && (
