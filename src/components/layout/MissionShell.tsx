@@ -37,8 +37,33 @@ interface MissionShellProps {
   requireAuth?: boolean;
 }
 
-const AVATAR_OPTIONS = [
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=ffdfbf',
+/**
+ * 把用户选的照片压成小尺寸正方形的 data URL。
+ *
+ * 头像最终以字符串存进数据库 `users.avatar`，而 `/api/users` 每次登录都会整表返回，
+ * 所以必须在客户端压到位——否则一张手机原图（数 MB）会让这个接口直接爆掉。
+ * 128×128 JPEG 约 3–8KB，48 人全上传时接口约增加 0.2–0.4MB，可接受。
+ */
+async function compressImageToDataUrl(file: File, size = 128, quality = 0.75): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('无法创建画布');
+    // 居中裁剪成正方形，避免照片被拉变形
+    const edge = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - edge) / 2;
+    const sy = (bitmap.height - edge) / 2;
+    ctx.drawImage(bitmap, sx, sy, edge, edge, 0, 0, size, size);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+const AVATAR_OPTIONS = [  'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=ffdfbf',
   'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka&backgroundColor=cbf3f0',
   'https://api.dicebear.com/7.x/avataaars/svg?seed=Bailey&backgroundColor=e0f2fe',
   'https://api.dicebear.com/7.x/avataaars/svg?seed=Charlie&backgroundColor=ede9fe',
@@ -103,6 +128,26 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
 
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('');
+  const [avatarErr, setAvatarErr] = useState('');
+  const [compressing, setCompressing] = useState(false);
+
+  /** 选照片 → 客户端压缩成小图 data URL，再走原有的「确认更换」保存 */
+  const handleAvatarFile = async (file: File | undefined) => {
+    if (!file) return;
+    setAvatarErr('');
+    if (!file.type.startsWith('image/')) {
+      setAvatarErr('请选择图片文件（jpg / png 等）');
+      return;
+    }
+    setCompressing(true);
+    try {
+      setSelectedAvatar(await compressImageToDataUrl(file));
+    } catch {
+      setAvatarErr('图片处理失败，请换一张试试');
+    } finally {
+      setCompressing(false);
+    }
+  };
 
   const handleAvatarChange = () => {
     if (selectedAvatar && userId) {
@@ -269,6 +314,35 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
                 </button>
               ))}
             </div>
+
+            {/* 上传真人照片：客户端压成 128×128 JPEG 再入库，避免 /api/users 体积爆炸 */}
+            <div className="mb-6">
+              <label className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 border-dashed border-mission-200 text-[13px] font-bold text-mission-600 hover:bg-mission-50/60 cursor-pointer transition-colors">
+                <Camera size={15} />
+                {compressing ? '处理中…' : '上传自己的照片'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleAvatarFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {avatarErr && (
+                <p className="mt-2 text-[12px] font-semibold text-danger-600 flex items-center gap-1">
+                  <AlertTriangle size={11} />{avatarErr}
+                </p>
+              )}
+              {selectedAvatar.startsWith('data:') && (
+                <div className="mt-3 flex items-center gap-2.5 p-2 rounded-xl bg-mission-50/70 border border-mission-100">
+                  <img src={selectedAvatar} alt="已选照片" className="w-10 h-10 rounded-lg object-cover" />
+                  <span className="text-[12px] font-semibold text-ink-600">已选照片，点「确认更换」保存</span>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowAvatarModal(false); setSelectedAvatar(''); }}
