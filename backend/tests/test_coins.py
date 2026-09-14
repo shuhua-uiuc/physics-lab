@@ -38,6 +38,73 @@ def test_student_cannot_adjust_coins(client, auth):
     assert resp.status_code == 403
 
 
+# ---------- 调币理由（会写进流水，学生可见） ----------
+
+def _last_tx(db, group_id="g-1"):
+    db.expire_all()
+    return (
+        db.query(CoinTransaction)
+        .filter(CoinTransaction.group_id == group_id)
+        .order_by(CoinTransaction.created_at.desc())
+        .first()
+    )
+
+
+def test_group_award_stores_reason(client, auth, db):
+    client.post(
+        "/api/groups/g-1/coins",
+        json={"delta": 100, "note": "实验完成质量高"},
+        headers=auth("teacher", "teacher123"),
+    )
+    tx = _last_tx(db)
+    assert tx.note == "实验完成质量高"
+    assert tx.source == "teacher_set"
+
+
+def test_group_deduction_stores_reason_and_marks_penalty(client, auth, db):
+    client.post(
+        "/api/groups/g-1/coins",
+        json={"delta": -30, "note": "器材未按时归还"},
+        headers=auth("teacher", "teacher123"),
+    )
+    tx = _last_tx(db)
+    assert tx.note == "器材未按时归还"
+    assert tx.source == "penalty" and tx.delta == -30
+
+
+def test_group_adjust_without_reason_falls_back(client, auth, db):
+    client.post("/api/groups/g-1/coins", json={"delta": 50}, headers=auth("teacher", "teacher123"))
+    assert _last_tx(db).note == "教师调整能量币"
+
+    client.post("/api/groups/g-1/coins", json={"delta": -50}, headers=auth("teacher", "teacher123"))
+    assert _last_tx(db).note == "教师扣除能量币"
+
+
+def test_blank_reason_is_treated_as_missing(client, auth, db):
+    """只打了空格不算理由，回退到中性文案，避免流水里出现空 note。"""
+    client.post(
+        "/api/groups/g-1/coins",
+        json={"delta": 50, "note": "   "},
+        headers=auth("teacher", "teacher123"),
+    )
+    assert _last_tx(db).note == "教师调整能量币"
+
+
+def test_personal_adjust_stores_reason(client, auth, db):
+    client.post(
+        "/api/users/u-1/coins",
+        json={"delta": 20, "note": "课堂表现优秀"},
+        headers=auth("teacher", "teacher123"),
+    )
+    tx = (
+        db.query(CoinTransaction)
+        .filter(CoinTransaction.user_id == "u-1")
+        .order_by(CoinTransaction.created_at.desc())
+        .first()
+    )
+    assert tx is not None and tx.note == "课堂表现优秀"
+
+
 # ---------- 组间转账 ----------
 
 def test_transfer_success(client, auth, db):

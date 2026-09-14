@@ -25,7 +25,8 @@ interface GroupState {
   /** 学生自助加入小组：本地乐观更新 + 后台同步。成功后返回后端最新的成员信息。 */
   joinGroup: (userId: string, groupId: string) => Promise<void>;
   updateContributionRatio: (groupId: string, ratioRecord: Record<string, number>) => void;
-  updateGroupCoins: (groupId: string, delta: number) => number;
+  /** 教师调小组能量币；note 为发放/扣除理由（写进流水，学生可见） */
+  updateGroupCoins: (groupId: string, delta: number, note?: string) => number;
   /** 仅本地余额变更，不触发后端同步（用于转账等由后端业务端点统一记账的场景）。 */
   adjustGroupCoinsLocal: (groupId: string, delta: number) => number;
   /** 批量重置所有小组能量为目标值（基线重置，不写逐组流水）。 */
@@ -165,7 +166,7 @@ export const useGroupStore = create<GroupState>((set, get) => {
       );
     },
 
-    updateGroupCoins: (groupId, delta) => {
+    updateGroupCoins: (groupId, delta, note) => {
       const { groups, users, classMeta } = get();
       let newBalance = 0;
       const nextGroups = groups.map((g) => {
@@ -177,7 +178,7 @@ export const useGroupStore = create<GroupState>((set, get) => {
       });
       persistAll(nextGroups, users, classMeta);
       set({ groups: nextGroups });
-      syncToApi(() => groupsApi.adjustCoins(groupId, delta), 'groups.adjustCoins');
+      syncToApi(() => groupsApi.adjustCoins(groupId, delta, note), 'groups.adjustCoins');
       return newBalance;
     },
 

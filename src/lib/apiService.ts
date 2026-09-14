@@ -67,8 +67,9 @@ export const groupsApi = {
     api.put<Group>(`/api/groups/${groupId}/contribution`, { ratioRecord }),
   setLeader: (groupId: string, userId: string) =>
     api.put<{ ok: boolean }>(`/api/groups/${groupId}/leader/${userId}`),
-  adjustCoins: (groupId: string, delta: number) =>
-    api.post<{ balanceAfter: number }>(`/api/groups/${groupId}/coins`, { delta }),
+  /** 教师调币；note 为发放/扣除理由，会写进流水并对学生可见 */
+  adjustCoins: (groupId: string, delta: number, note?: string) =>
+    api.post<{ balanceAfter: number }>(`/api/groups/${groupId}/coins`, { delta, note }),
   resetCoins: (targetCoins: number) =>
     api.post<{ ok: boolean; count: number; targetCoins: number }>('/api/groups/reset-coins', { targetCoins }),
   join: (groupId: string) => api.post<User>(`/api/groups/${groupId}/join`),

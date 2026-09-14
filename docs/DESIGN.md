@@ -42,7 +42,7 @@
 - SQLAlchemy ORM + SQLite（`backend/physics_lab.db`）
 - 鉴权：python-jose（JWT，HS256，有效期 12h）+ bcrypt 密码哈希
 - 配置：pydantic-settings（`backend/.env` 或环境变量覆盖）
-- 测试：pytest（`backend/tests/`，61 个用例，4 个文件）
+- 测试：pytest（`backend/tests/`，90 个用例，6 个文件）
 
 ---
 
@@ -62,7 +62,7 @@ Physics_lab/
 │   │   ├── projectStore.ts      # 项目/招募/展示墙
 │   │   ├── coinStore.ts         # 能量币流水/转账/结算动作
 │   │   ├── theoryStore.ts       # 知识主题/题目/测验/挑战
-│   │   ├── safetyStore.ts       # 安全认证题库（localStorage，内置 35 题）
+│   │   ├── safetyStore.ts       # 安全认证题库（后端权威，内置 35 题）
 │   │   ├── questionBankStore.ts # 题库审核（学生提交 + 教师上传，localStorage）
 │   │   └── uiStore.ts           # toast 通知等 UI 状态
 │   ├── lib/
@@ -84,10 +84,10 @@ Physics_lab/
 │   │   ├── config.py            # Settings（jwt_secret、默认密码、cors_origins…）
 │   │   ├── database.py          # SQLAlchemy engine/SessionLocal/Base
 │   │   ├── deps.py              # get_db / get_current_user / 角色依赖
-│   │   ├── models.py            # 13 张表的 ORM 模型
+│   │   ├── models.py            # 14 张表的 ORM 模型
 │   │   ├── schemas.py           # Pydantic 请求/响应模型（camelCase 序列化）
 │   │   └── routers/             # auth/admin/groups/theory/projects/coins（6 个）
-│   ├── tests/                   # pytest（test_auth/test_groups/test_coins/test_projects）
+│   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/safety_assignments）
 │   ├── requirements.txt / requirements-dev.txt
 │   └── physics_lab.db           # SQLite 数据文件
 ├── docs/DESIGN.md               # 本文档
@@ -168,8 +168,8 @@ cd backend
 | `/theory/challenges` | TheoryChallenge.tsx | 挑战大厅 + "我的题目"（学生提交题 + 查看审核反馈） |
 | `/projects` | ProjectCenter.tsx | 项目中心（看板） |
 | `/projects/:id/safety` | SafetyExam.tsx | 项目安全考核入口 |
-| `/safety-lab` | SafetyLab.tsx | 安全实验室 |
-| `/safety-exam/:category` | SafetyExam.tsx | 安全认证考试 |
+| `/safety-lab` | SafetyLab.tsx | 安全实验室（含「今日安全考核」真实指派面板） |
+| `/safety-exam/:category` | SafetyExam.tsx | 安全认证考试；可带 `?assignment=<id>` 按教师指派的题数/限时/及格线作答 |
 | `/projects/:id/recruit/:rid` | ResearchMarketplace.tsx | 招募投标详情 |
 | `/recruit/market` | ResearchMarketplace.tsx | 招募市场 |
 | `/coins` | ResearchLeague.tsx | 能量币/排行榜与流水 |
@@ -191,7 +191,7 @@ cd backend
 | `/teacher/projects` | TeacherProjects.tsx | 项目管理（审批/冻结/编辑项目） |
 | `/teacher/roster` | StudentRoster.tsx | 学生名册（按班级分区展示、按班级批量选择） |
 | `/teacher/question-bank` | TeacherQuestionBank.tsx | 题库审核中心（学生提交审核 + 教师上传/导入/导出） |
-| `/teacher/safety` | TeacherSafety.tsx | 安全题库维护（增删改、JSON 批量导入/导出、恢复内置 35 题） |
+| `/teacher/safety` | TeacherSafety.tsx | 安全题库维护（增删改、JSON 批量导入/导出、恢复内置 35 题）+ **考核任务指派** |
 
 管理员端：`/admin` → AdminConsole.tsx（班级、教师账户、学生账户管理；`ClassComposition.tsx` 由它以 tab 形式内嵌，不单独占路由）。
 
@@ -218,7 +218,7 @@ cd backend
 | projectStore | localStorage + 后端 | projects、recruitments、showcaseItems | createProject、**updateProject（PUT /api/projects/{id}）**、updateStatus、markProjectDone、createRecruitment、bidRecruitment、resolveRecruitment |
 | coinStore | localStorage + 后端 | coinTxs | addTx、transferCoins、settleChallenge/Recruit/Project（调后端端点） |
 | theoryStore | localStorage + 后端 | topics、questions、quizSessions、challenges | 测验/挑战作答与提交 |
-| safetyStore | localStorage 键 `plab_safety_questions` | 安全题库 | 增删改、导入/导出/重置（**尚未接后端**） |
+| safetyStore | localStorage + 后端 | 安全题库 | 增删改、导入/导出/重置（经 `/api/safety/questions*` 落库，服务端权威；内置 35 题由 `backend/app/safety_builtin.py` 提供） |
 | questionBankStore | localStorage 键 `plab_review_questions` | ReviewableQuestion[] | submitQuestion（学生→pending）、uploadQuestion（教师→approved）、approveQuestion、rejectQuestion（须填理由）、editQuestion（标记 edited）、setFeedback、deleteQuestion、importTeacherQuestions |
 | uiStore | 不持久化 | toasts | pushToast/removeToast（5 秒自动消失，铃铛显示未读数） |
 
@@ -263,7 +263,7 @@ cd backend
 **小组**：
 - `GET/POST /groups`、`PATCH/DELETE /groups/{id}`、`PATCH /groups/{id}/class`
 - `POST /groups/{id}/join`、`PUT /groups/{id}/leader/{user_id}`
-- `PATCH /groups/{id}/coins`（教师调币）、`PUT /groups/{id}/contribution`（贡献分配）
+- `POST /groups/{id}/coins`（教师调币，`note` 为发放/扣除理由，**写进流水且学生可见**）、`PUT /groups/{id}/contribution`（贡献分配）
 
 **项目/招募**：
 - `GET/POST /projects`、`GET /projects/{id}`、**`PUT /projects/{id}`（项目信息更新：techPoints/difficulties/标题/课题/器材/成果/照片/rewardCoins；教师可改任意项目，学生仅本组；改器材自动重判 safetyCategory）**
@@ -279,13 +279,19 @@ cd backend
 - `GET /topics`、`GET /questions`、`POST /quiz/start`、`POST /quiz/{id}/answer`、`POST /quiz/{id}/grade`
 - `GET/POST /challenges`、`GET /challenges/{id}/questions`、`POST /challenges/{id}/submit`
 - `GET/POST /showcase`、`POST /showcase/{id}/love`
+- `PUT /showcase/{id}`（学生改本组作品置回待审批；**教师/管理员改保留原状态**）、`DELETE /showcase/{id}`（教师/管理员下架，**已奖励的能量币不回滚**）、`POST /showcase/{id}/review`（教师审批，通过可带 coins 奖励）
+
+**安全**：
+- `GET/POST /safety/questions`、`PATCH/DELETE /safety/questions/{id}`、`POST /safety/questions/import`、`POST /safety/questions/reset`（题库，教师维护，登录可读）
+- `POST /safety/records`、`GET /safety/records`（考核记录；**带 `assignmentId` 时后端按指派及格线推导 `passed`，忽略客户端传值**）
+- `POST /safety/assignments`（教师建指派，`classId`/`groupId` 二选一）、`GET /safety/assignments`（教师看全部，学生只看指派给自己班级或小组的）、`GET/DELETE /safety/assignments/{id}`
 
 **其他**：`GET /health`
 
 ### 8.4 后端分层
 - `deps.py`：`get_db`（请求级 Session）、`get_current_user`（解 JWT）、角色依赖（teacher/admin）。
 - `schemas.py`：Pydantic 模型，配置 `alias_generator`/`populate_by_name` 实现 camelCase 出入参。
-- `models.py`：13 张表 —— classes、groups、users、coin_transactions、topics、questions、quiz_sessions、challenges、projects、recruitments、showcase_items、class_meta、safety_records。
+- `models.py`：14 张表 —— classes、groups、users、coin_transactions、topics、questions、quiz_sessions、challenges、projects、recruitments、showcase_items、class_meta、safety_records、safety_assignments。
 - `main.py`：CORS（默认允许 5173/5174）、启动时建表并灌入种子数据（教师/管理员账户、班级、示例小组与题目）。
 
 ---
@@ -293,12 +299,14 @@ cd backend
 ## 9. 后端测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q     # 61 个用例，约 1 秒
+cd backend && .venv/bin/python -m pytest tests/ -q     # 90 个用例，约 2 秒
 ```
 - `tests/test_auth.py`：注册/登录/鉴权
 - `tests/test_groups.py`：建组/加入/改名/分配
-- `tests/test_coins.py`：转账原子性、流水、余额
+- `tests/test_coins.py`：转账原子性、流水、余额、调币理由落账（含扣罚标 `penalty`、空白理由回退中性文案）
 - `tests/test_projects.py`：创建、`PUT` 更新（部分字段保留、器材改类、跨组 403、教师可改、404/401）
+- `tests/test_safety_assignments.py`：指派可见性分流（含**无小组学生不得误匹配 `group_id IS NULL`** 的回归）、权限、及格由服务端推导防伪造
+- `tests/test_showcase.py`：教师编辑保留审批状态、学生编辑置回待审批、下架权限与「不回滚已奖励能量币」
 
 **注意**：系统 Python 环境缺少 jose 等依赖，必须使用 `backend/.venv/bin/python`。
 
@@ -363,7 +371,7 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 
 | 项 | 现状 | 下一步 |
 |---|---|---|
-| 安全题库多端共享 | 题库仍在 `safetyStore`（localStorage）；但考试记录 `safety_records` 已接后端（`POST/GET /api/safety/records`，见 SafetyLab/ResearchProfile/Dashboard） | 建后端题库表 + CRUD 端点（参考 questionBank 流程） |
+| 安全考核指派 | 已完成：教师端 `/teacher/safety` 建指派（类别/题数/限时/及格线/截止/目标班级或小组），学生面板按角色分流可见，考试页读 `?assignment=` 生效参数 | 未做：指派编辑（改则删重建）、服务端强制计时（现为客户端倒计时） |
 | 题库审核多端共享 | questionBankStore 仅 localStorage + 种子数据 | 后端建 review_questions 表；学生提交→教师审核全链路持久化 |
 | 题目示意图 | 学生/教师提交题无 image 字段 | ReviewableQuestion 增加可选 imageUrl |
 | 冻结项目原因/冻结天数 | 后端 Project 无 freezeReason/frozenAt | 加字段与教师冻结操作端点 |

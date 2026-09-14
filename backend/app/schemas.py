@@ -215,7 +215,10 @@ class UserAvatarUpdate(BaseModel):
 
 
 class CoinDelta(BaseModel):
+    """教师调整小组能量币。note 为发放/扣除理由，会写进流水并**对学生可见**。"""
+
     delta: int
+    note: str | None = None
 
 
 class CoinTransfer(CamelModel):

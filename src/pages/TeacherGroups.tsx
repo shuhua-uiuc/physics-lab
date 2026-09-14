@@ -30,10 +30,62 @@ import { useCoinStore } from '@/store/coinStore';
 import { classesApi, usersApi } from '@/lib/apiService';
 import { syncToApi } from '@/lib/syncQueue';
 import { cn } from '@/lib/utils';
+import { AWARD_REASONS, DEDUCT_REASONS } from '@/lib/coinReasons';
 import AvatarStack from '@/components/ui/AvatarStack';
 import type { User, SchoolClass } from '@/data/mockData';
 
 type DialogKind = 'reset' | 'new' | 'coins' | 'rename' | 'members' | 'disband' | null;
+
+/**
+ * 调币理由选择器：预设按钮 + 可自由填写。
+ *
+ * 预设是主力（老师一天要发很多次币，手打会跳过），输入框只是兜底。
+ * 理由会写进流水并对学生可见，所以文案要就事论事。
+ */
+function ReasonPicker({
+  mode,
+  value,
+  onChange,
+}: {
+  mode: 'add' | 'sub';
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const presets = mode === 'add' ? AWARD_REASONS : DEDUCT_REASONS;
+  return (
+    <div className="mb-5">
+      <label className="text-[12px] font-bold text-ink-600 mb-1.5 flex items-baseline gap-1.5 flex-wrap">
+        <span>{mode === 'add' ? '发放' : '扣除'}理由</span>
+        <span className="font-normal text-ink-400">学生能在流水里看到</span>
+      </label>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {presets.map((r) => (
+          <button
+            key={r}
+            type="button"
+            onClick={() => onChange(r)}
+            className={cn(
+              'px-2.5 py-1.5 rounded-xl text-[12px] font-semibold transition border',
+              value === r
+                ? mode === 'add'
+                  ? 'bg-gradient-to-br from-growth-400 to-growth-600 text-white border-transparent'
+                  : 'bg-gradient-to-br from-danger-400 to-danger-600 text-white border-transparent'
+                : 'bg-white/70 border-ink-200 text-ink-600 hover:border-mission-300'
+            )}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="也可以自己写一个理由"
+        className="input w-full !text-[12.5px]"
+      />
+    </div>
+  );
+}
 
 const FLEET_THEMES = [
   { color: '#4F7CFF', grad: 'from-mission-400 via-mission-500 to-mission-600' },
@@ -84,9 +136,11 @@ export default function TeacherGroups() {
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
   const [coinAmount, setCoinAmount] = useState(100);
   const [coinMode, setCoinMode] = useState<'add' | 'sub'>('add');
+  const [coinReason, setCoinReason] = useState('');
   const [memberCoinTarget, setMemberCoinTarget] = useState<User | null>(null);
   const [memberCoinAmount, setMemberCoinAmount] = useState(20);
   const [memberCoinMode, setMemberCoinMode] = useState<'add' | 'sub'>('add');
+  const [memberCoinReason, setMemberCoinReason] = useState('');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const flashToast = (m: string) => {
@@ -193,11 +247,17 @@ export default function TeacherGroups() {
   // ----- actions -----
   const applyCoinChange = () => {
     if (!activeGroup) return;
+    const reason = coinReason.trim();
+    if (!reason) {
+      flashToast('请先选一个发放/扣除理由（学生能看到）');
+      return;
+    }
     const delta = coinMode === 'add' ? coinAmount : -coinAmount;
-    updateGroupCoins(activeGroup.id, delta);
+    updateGroupCoins(activeGroup.id, delta, reason);
     flashToast(`${coinMode === 'add' ? '+' : '-'}${coinAmount} ⚡ → ${activeGroup.name}`);
     setDialog(null);
     setActiveGroupId(null);
+    setCoinReason('');
   };
 
   const confirmResetAll = () => {
@@ -588,6 +648,7 @@ export default function TeacherGroups() {
                           setActiveGroupId(g.id);
                           setCoinAmount(100);
                           setCoinMode('add');
+                          setCoinReason('');
                           setDialog('coins');
                         }}
                         className="btn-energy !py-2 !px-3 text-[12px] !rounded-xl !gap-1.5"
@@ -821,7 +882,7 @@ export default function TeacherGroups() {
 
                   <div className="mb-5 grid grid-cols-2 gap-2.5">
                     <button
-                      onClick={() => setCoinMode('add')}
+                      onClick={() => { setCoinMode('add'); setCoinReason(''); }}
                       className={cn(
                         'p-3.5 rounded-2xl border-2 font-bold transition-all flex items-center justify-center gap-2',
                         coinMode === 'add'
@@ -833,7 +894,7 @@ export default function TeacherGroups() {
                       增加能量
                     </button>
                     <button
-                      onClick={() => setCoinMode('sub')}
+                      onClick={() => { setCoinMode('sub'); setCoinReason(''); }}
                       className={cn(
                         'p-3.5 rounded-2xl border-2 font-bold transition-all flex items-center justify-center gap-2',
                         coinMode === 'sub'
@@ -882,6 +943,8 @@ export default function TeacherGroups() {
                       ))}
                     </div>
                   </div>
+
+                  <ReasonPicker mode={coinMode} value={coinReason} onChange={setCoinReason} />
 
                   <div className="mb-5 p-4 rounded-2xl border-2 border-ink-100 bg-ink-50/40">
                     <div className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider mb-1">操作后预览</div>
@@ -984,7 +1047,7 @@ export default function TeacherGroups() {
                               <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
                             </div>
                             <button
-                              onClick={() => setMemberCoinTarget(u)}
+                              onClick={() => { setMemberCoinTarget(u); setMemberCoinMode('add'); setMemberCoinReason(''); }}
                               className="btn-ghost !py-1.5 !px-2.5 !text-[11px] !rounded-lg"
                               title="调整个人能量币"
                             >
@@ -1140,23 +1203,32 @@ export default function TeacherGroups() {
               <button onClick={() => setMemberCoinTarget(null)} className="ml-auto w-8 h-8 rounded-lg hover:bg-ink-100 flex items-center justify-center text-ink-400"><X size={16} /></button>
             </div>
             <div className="grid grid-cols-2 gap-2.5 mb-4">
-              <button onClick={() => setMemberCoinMode('add')} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'add' ? 'bg-growth-50 border-growth-400 text-growth-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Plus size={15} />增加</button>
-              <button onClick={() => setMemberCoinMode('sub')} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'sub' ? 'bg-danger-50 border-danger-400 text-danger-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Minus size={15} />扣除</button>
+              <button onClick={() => { setMemberCoinMode('add'); setMemberCoinReason(''); }} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'add' ? 'bg-growth-50 border-growth-400 text-growth-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Plus size={15} />增加</button>
+              <button onClick={() => { setMemberCoinMode('sub'); setMemberCoinReason(''); }} className={cn('p-3 rounded-xl border-2 font-bold flex items-center justify-center gap-1.5', memberCoinMode === 'sub' ? 'bg-danger-50 border-danger-400 text-danger-700' : 'bg-white/50 border-ink-200 text-ink-500')}><Minus size={15} />扣除</button>
             </div>
             <label className="text-[12px] font-bold text-ink-600 mb-1.5 flex items-center justify-between">
               <span>{memberCoinMode === 'add' ? '增加' : '扣除'}数量 (⚡)</span>
               <span className={cn('font-extrabold tabular-nums', memberCoinMode === 'add' ? 'text-growth-700' : 'text-danger-700')}>{memberCoinMode === 'add' ? '+' : '-'}{memberCoinAmount}</span>
             </label>
             <input type="number" min={1} className="input w-full mb-5" value={memberCoinAmount} onChange={(e) => setMemberCoinAmount(Math.max(1, Number(e.target.value) || 1))} />
+
+            <ReasonPicker mode={memberCoinMode} value={memberCoinReason} onChange={setMemberCoinReason} />
+
             <div className="flex gap-2">
               <button className="btn-ghost flex-1" onClick={() => setMemberCoinTarget(null)}>取消</button>
               <button
                 className={cn('flex-1 py-2.5 rounded-xl font-semibold text-white', memberCoinMode === 'add' ? 'bg-gradient-to-br from-growth-400 to-growth-600' : 'bg-gradient-to-br from-danger-400 to-danger-600')}
                 onClick={() => {
+                  const reason = memberCoinReason.trim();
+                  if (!reason) {
+                    flashToast('请先选一个发放/扣除理由（学生能看到）');
+                    return;
+                  }
                   const delta = memberCoinMode === 'add' ? memberCoinAmount : -memberCoinAmount;
-                  adjustUserCoins(memberCoinTarget.id, delta);
+                  adjustUserCoins(memberCoinTarget.id, delta, reason);
                   flashToast(`${memberCoinMode === 'add' ? '+' : '-'}${memberCoinAmount} ⚡ → ${memberCoinTarget.name}（个人）`);
                   setMemberCoinTarget(null);
+                  setMemberCoinReason('');
                 }}
               >
                 确认{memberCoinMode === 'add' ? '增加' : '扣除'}

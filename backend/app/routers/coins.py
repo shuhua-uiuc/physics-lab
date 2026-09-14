@@ -81,7 +81,9 @@ def teacher_adjust_coins(
         source="teacher_set" if payload.delta >= 0 else "penalty",
         ref_id="teacher_adjust",
         delta=payload.delta,
-        note="教师调整能量币" if payload.delta >= 0 else "教师扣除能量币",
+        # 理由写进流水，学生端可见；没给理由时回退到中性描述
+        note=(payload.note or "").strip()
+        or ("教师调整能量币" if payload.delta >= 0 else "教师扣除能量币"),
     )
     db.commit()
     return {"balanceAfter": tx.balance_after}
