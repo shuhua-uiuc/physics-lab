@@ -216,3 +216,28 @@ class SafetyRecord(Base):
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # 来自哪条教师指派；自由练习为空。学生面板据此判断"这条指派我通过了没有"
+    # （按 (user_id, category) 判断不够——同类别可能既有指派又有自由练习）
+    assignment_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+
+
+class SafetyAssignment(Base):
+    """教师指派的一次安全考核任务。
+
+    目标用两个可空外键表达"班级**或**小组"（恰好填一个，由请求模型校验），
+    沿用本仓库"受众用单个 FK 列"的约定（如 projects.owner_group_id）。
+    """
+
+    __tablename__ = "safety_assignments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    question_count: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    time_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=15)  # 分钟
+    pass_score: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    class_id: Mapped[str | None] = mapped_column(ForeignKey("classes.id"), index=True, nullable=True)
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("groups.id"), index=True, nullable=True)
+    created_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { safetyApi, SafetyRecord } from '@/lib/apiService';
+import { safetyApi, safetyAssignmentApi, SafetyRecord, SafetyAssignment } from '@/lib/apiService';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,16 +37,6 @@ interface SafetyDomain {
   status: 'passed' | 'pending' | 'review';
 }
 
-interface PendingExam {
-  id: string;
-  projectName: string;
-  category: SafetyCategory;
-  domainName: string;
-  questions: number;
-  timeLimit: number;
-  passScore: number;
-}
-
 interface SafetyTip {
   id: string;
   category: SafetyCategory;
@@ -61,11 +51,6 @@ const SAFETY_DOMAINS: SafetyDomain[] = [
   { category: 'mechanical', name: '机械安全', icon: Wrench, color: 'growth', grad: 'from-growth-400 via-growth-500 to-growth-600', passedQuestions: 16, totalQuestions: 20, passRate: 80, status: 'passed' },
   { category: 'radiation', name: '辐射安全', icon: RadioTower, color: 'alert', grad: 'from-alert-400 via-alert-500 to-energy-500', passedQuestions: 8, totalQuestions: 20, passRate: 40, status: 'pending' },
   { category: 'chemical', name: '化学安全', icon: FlaskConical, color: 'mission', grad: 'from-mission-400 via-nova-400 to-nova-500', passedQuestions: 10, totalQuestions: 20, passRate: 50, status: 'pending' },
-];
-
-const PENDING_EXAMS: PendingExam[] = [
-  { id: 'ex1', projectName: '盖革计数器 DIY', category: 'radiation', domainName: '辐射安全', questions: 15, timeLimit: 20, passScore: 80 },
-  { id: 'ex2', projectName: 'μ 子寿命测量', category: 'chemical', domainName: '化学安全', questions: 12, timeLimit: 15, passScore: 80 },
 ];
 
 const SAFETY_TIPS: SafetyTip[] = [
@@ -111,6 +96,22 @@ export default function SafetyLab() {
   useEffect(() => {
     safetyApi.myRecords().then(setRecords).catch(() => {});
   }, []);
+
+  // 教师指派的安全考核（真实数据；在线时由后端按本人班级/小组过滤）
+  const [assignments, setAssignments] = useState<SafetyAssignment[]>([]);
+  useEffect(() => {
+    safetyAssignmentApi.list().then(setAssignments).catch(() => {});
+  }, []);
+  // 待完成 = 未通过且未截止
+  const pendingAssignments = useMemo(
+    () =>
+      assignments.filter(
+        (a) =>
+          !records.some((r) => r.assignmentId === a.id && r.passed) &&
+          !(a.deadline && new Date(a.deadline).getTime() < Date.now())
+      ),
+    [assignments, records]
+  );
   const recordsByCat = useMemo(() => {
     const m: Record<string, SafetyRecord> = {};
     for (const r of records) {
@@ -500,7 +501,7 @@ export default function SafetyLab() {
                       )}
                       {domain.status === 'pending' && (
                         <>
-                          <button className="btn-energy flex-1 !py-2.5 !text-xs !rounded-xl" onClick={() => { pushToast(`进入《${domain.name}》安全考核 · 限时 ${PENDING_EXAMS.find(e => e.category === domain.category)?.timeLimit || 15} 分钟`, 'info'); navigate(`/safety-exam/${domain.category}`); }}>
+                          <button className="btn-energy flex-1 !py-2.5 !text-xs !rounded-xl" onClick={() => { pushToast(`进入《${domain.name}》安全考核`, 'info'); navigate(`/safety-exam/${domain.category}`); }}>
                             <PlayCircle size={13} /> 参加考核
                           </button>
                           <button className="btn-ghost !text-xs !rounded-xl !px-3.5 border border-mission-200 text-mission-600" onClick={() => setReviewCategory(domain.category)}>
@@ -526,21 +527,36 @@ export default function SafetyLab() {
                 </div>
                 <div>
                   <h3 className="font-black text-ink-800">今日安全考核</h3>
-                  <p className="text-[11px] text-ink-500 font-medium">共 {PENDING_EXAMS.length} 项待通过</p>
+                  <p className="text-[11px] text-ink-500 font-medium">
+                    {pendingAssignments.length > 0 ? `共 ${pendingAssignments.length} 项待通过` : '暂无待完成的指派'}
+                  </p>
                 </div>
               </div>
 
+              {assignments.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/60 border border-ink-100 text-center text-[12px] text-ink-400 leading-relaxed">
+                  老师还没有布置安全考核。
+                  <br />
+                  可以先去下方各领域「参加考核」自主练习。
+                </div>
+              ) : (
               <div className="space-y-3">
-                {PENDING_EXAMS.map((exam, idx) => {
+                {assignments.map((exam, idx) => {
                   const domain = SAFETY_DOMAINS.find((d) => d.category === exam.category);
                   const DomainIcon = domain?.icon || ShieldCheck;
+                  const done = records.some((r) => r.assignmentId === exam.id && r.passed);
+                  const expired = !!exam.deadline && new Date(exam.deadline).getTime() < Date.now();
+                  const locked = done || expired;
                   return (
                     <motion.div
                       key={exam.id}
                       initial={{ opacity: 0, x: 12 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.1 }}
-                      className="p-4 rounded-2xl bg-gradient-to-br from-white/90 to-ink-50/80 border border-alert-100/80 hover:border-energy-300 transition-colors"
+                      className={cn(
+                        'p-4 rounded-2xl bg-gradient-to-br from-white/90 to-ink-50/80 border transition-colors',
+                        locked ? 'border-ink-100/80 opacity-80' : 'border-alert-100/80 hover:border-energy-300'
+                      )}
                     >
                       <div className="flex items-start gap-3 mb-3">
                         <div className={cn(
@@ -552,18 +568,27 @@ export default function SafetyLab() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                             <span className={cn(`chip-${domain?.color || 'mission'} !py-0.5 !text-[10px]`)}>
-                              {exam.domainName}
+                              {domain?.name || exam.category}
                             </span>
+                            {done && <span className="chip-growth !py-0.5 !text-[10px]">
+                              <CheckCircle2 size={9} />已通过
+                            </span>}
+                            {!done && expired && <span className="chip-ink !py-0.5 !text-[10px]">已截止</span>}
                           </div>
                           <h4 className="font-black text-sm text-ink-800 leading-tight truncate">
-                            {exam.projectName}
+                            {exam.title}
                           </h4>
+                          {exam.deadline && !expired && (
+                            <div className="text-[10.5px] text-ink-400 mt-0.5">
+                              截止 {new Date(exam.deadline).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 mb-3.5">
                         <div className="p-2 rounded-lg bg-ink-50/80 text-center">
-                          <div className="text-sm font-black text-ink-800 tabular-nums">{exam.questions}</div>
+                          <div className="text-sm font-black text-ink-800 tabular-nums">{exam.questionCount}</div>
                           <div className="text-[9px] font-bold text-ink-500 uppercase tracking-wider">题目</div>
                         </div>
                         <div className="p-2 rounded-lg bg-ink-50/80 text-center">
@@ -576,15 +601,25 @@ export default function SafetyLab() {
                         </div>
                       </div>
 
-                      <button className="btn-energy w-full !py-3 !text-sm !rounded-xl relative group" onClick={() => navigate(`/safety-exam/${exam.category}`)}>
-                        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition" />
-                        <Zap size={15} className="fill-white/30 relative" />
-                        <span className="relative">START EXAM · 开始考核</span>
+                      <button
+                        className={cn(
+                          'w-full !py-3 !text-sm !rounded-xl relative group',
+                          locked ? 'btn-ghost cursor-not-allowed' : 'btn-energy'
+                        )}
+                        disabled={locked}
+                        onClick={() => navigate(`/safety-exam/${exam.category}?assignment=${exam.id}`)}
+                      >
+                        {!locked && <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition" />}
+                        <Zap size={15} className={cn('relative', !locked && 'fill-white/30')} />
+                        <span className="relative">
+                          {done ? '已通过 · 可重考' : expired ? '已截止' : 'START EXAM · 开始考核'}
+                        </span>
                       </button>
                     </motion.div>
                   );
                 })}
               </div>
+              )}
             </div>
           </div>
 

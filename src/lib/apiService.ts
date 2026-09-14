@@ -201,12 +201,50 @@ export interface SafetyRecord {
   score: number;
   passed: boolean;
   createdAt: string;
+  /** 来自哪条教师指派；自由练习为 null */
+  assignmentId?: string | null;
 }
 
 export const safetyApi = {
-  record: (category: string, score: number, passed: boolean) =>
-    api.post<SafetyRecord>('/api/safety/records', { category, score, passed }),
+  /**
+   * 提交一次考核结果。带 assignmentId 时后端会忽略传入的 passed，
+   * 改由该指派的及格线推导（防止伪造通过）。
+   */
+  record: (category: string, score: number, passed: boolean, assignmentId?: string | null) =>
+    api.post<SafetyRecord>('/api/safety/records', { category, score, passed, assignmentId }),
   myRecords: () => api.get<SafetyRecord[]>('/api/safety/records'),
+};
+
+// ---------- Safety exam assignments（教师指派） ----------
+export interface SafetyAssignment {
+  id: string;
+  title: string;
+  category: string;
+  questionCount: number;
+  timeLimit: number; // 分钟
+  passScore: number;
+  deadline: string | null;
+  classId: string | null;
+  groupId: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export const safetyAssignmentApi = {
+  /** 教师/管理员返回全部；学生只返回指派给自己班级或小组的 */
+  list: () => api.get<SafetyAssignment[]>('/api/safety/assignments'),
+  get: (id: string) => api.get<SafetyAssignment>(`/api/safety/assignments/${id}`),
+  create: (payload: {
+    title: string;
+    category: string;
+    questionCount: number;
+    timeLimit: number;
+    passScore: number;
+    deadline?: string | null;
+    classId?: string | null;
+    groupId?: string | null;
+  }) => api.post<SafetyAssignment>('/api/safety/assignments', payload),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/api/safety/assignments/${id}`),
 };
 
 /**

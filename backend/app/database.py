@@ -72,3 +72,13 @@ def _run_lightweight_migrations() -> None:
                 conn.execute(text("ALTER TABLE showcase_items ADD COLUMN reject_reason TEXT DEFAULT ''"))
             if "awarded_coins" not in sc_columns:
                 conn.execute(text("ALTER TABLE showcase_items ADD COLUMN awarded_coins INTEGER DEFAULT 0"))
+
+    # 安全考核记录关联到"教师指派"（自由练习为空）
+    if "safety_records" in inspector.get_table_names():
+        sr_columns = {col["name"] for col in inspector.get_columns("safety_records")}
+        if "assignment_id" not in sr_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE safety_records ADD COLUMN assignment_id VARCHAR"))
+                conn.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_safety_records_assignment_id ON safety_records (assignment_id)")
+                )

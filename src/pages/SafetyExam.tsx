@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useProjectStore } from '@/store/projectStore';
 import { useTheoryStore } from '@/store/theoryStore';
 import { useSafetyStore } from '@/store/safetyStore';
@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { safetyApi } from '@/lib/apiService';
+import { safetyApi, safetyAssignmentApi, SafetyAssignment } from '@/lib/apiService';
 
 type ExamStep = 'notice' | 'quiz' | 'result';
 
@@ -39,6 +39,38 @@ function isAnswerCorrect(q: Question, userAnswer: any): boolean {
   }
   if (q.type === 'judge') return Boolean(userAnswer) === Boolean(q.answer);
   return Number(userAnswer) === Number(q.answer);
+}
+
+/**
+ * 考试倒计时（教师指派会带限时）。
+ *
+ * - 用**绝对截止时刻**而非每次累加，避免 setInterval 漂移
+ * - onExpire 存在 ref 里：父组件重渲染不会重启计时器
+ * - 到点只触发一次；seconds<=0 表示不计时
+ */
+function useExamTimer(seconds: number, active: boolean, onExpire: () => void): number {
+  const [remaining, setRemaining] = useState(seconds);
+  const fireRef = useRef(onExpire);
+  fireRef.current = onExpire;
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    if (!active || seconds <= 0) return;
+    doneRef.current = false;
+    setRemaining(seconds);
+    const deadlineMs = Date.now() + seconds * 1000;
+    const t = setInterval(() => {
+      const r = Math.max(0, Math.round((deadlineMs - Date.now()) / 1000));
+      setRemaining(r);
+      if (r === 0 && !doneRef.current) {
+        doneRef.current = true;
+        fireRef.current();
+      }
+    }, 250);
+    return () => clearInterval(t);
+  }, [active, seconds]);
+
+  return remaining;
 }
 
 export default function SafetyExam() {
@@ -75,6 +107,39 @@ export default function SafetyExam() {
     return ids.size;
   }, [examCategory, theoryQuestions, safetyQuestions]);
 
+  // 来自教师指派的考核参数（?assignment=xxx）。没有该参数就是自由练习，用默认值。
+  const [searchParams] = useSearchParams();
+  const assignmentParam = searchParams.get('assignment');
+  const [assignment, setAssignment] = useState<SafetyAssignment | null>(null);
+  const [assignmentError, setAssignmentError] = useState('');
+  useEffect(() => {
+    if (!assignmentParam) {
+      setAssignment(null);
+      setAssignmentError('');
+      return;
+    }
+    let alive = true;
+    safetyAssignmentApi
+      .get(assignmentParam)
+      .then((a) => { if (alive) { setAssignment(a); setAssignmentError(''); } })
+      .catch(() => { if (alive) setAssignmentError('这条考核指派不存在，或你没有权限参加'); });
+    return () => { alive = false; };
+  }, [assignmentParam]);
+
+  // 生效参数：有指派就按指派的，否则沿用自由练习的默认值
+  const examCount = assignment?.questionCount ?? 10;
+  const passScore = assignment?.passScore ?? 80;
+  const timeBudgetSec = assignment ? Math.max(0, assignment.timeLimit * 60) : 0; // 0 = 不计时
+  const isExpired = !!assignment?.deadline && new Date(assignment.deadline).getTime() < Date.now();
+
+  // 限时倒计时：只在答题阶段走，手动交卷后（step 变 result）自动停。
+  // 必须放在下面两个 early return 之前——Hook 不能出现在提前返回之后。
+  const remainingSec = useExamTimer(timeBudgetSec, step === 'quiz' && !submitted, () => {
+    pushToast('时间到，已自动交卷', 'warning');
+    finalize(true);
+  });
+  const timerText = `${String(Math.floor(remainingSec / 60)).padStart(2, '0')}:${String(remainingSec % 60).padStart(2, '0')}`;
+
   useEffect(() => {
     if (step !== 'quiz' || questions.length > 0 || !examCategory) return;
     let pool = theoryQuestions.filter((q) => q.safetyCategory === examCategory);
@@ -85,8 +150,30 @@ export default function SafetyExam() {
       );
       pool = [...pool, ...maintained];
     }
-    setQuestions(sampleExamQuestions(examCategory, pool, 10));
-  }, [step, questions.length, examCategory, theoryQuestions, safetyQuestions]);
+    setQuestions(sampleExamQuestions(examCategory, pool, examCount));
+  }, [step, questions.length, examCategory, theoryQuestions, safetyQuestions, examCount]);
+
+  // 实际会出的题数：指派题数与该类别可出题量取小（题库不够时只能少出）
+  const effectiveExamCount = assignment
+    ? Math.min(examCount, availableCount || examCount)
+    : availableCount;
+
+  // 指派相关异常：不存在/无权，或已过截止时间 —— 明确报错，不静默退化成自由练习
+  // （否则这次成绩挂不到指派上，学生以为考过了其实没记）
+  if (assignmentParam && (assignmentError || isExpired)) {
+    return (
+      <div className="container mx-auto py-16 text-center">
+        <AlertTriangle size={48} className="mx-auto text-danger-400 mb-4" />
+        <h2 className="text-xl font-serif text-mission-800 mb-2">
+          {assignmentError ? '考核指派出错' : '该考核已截止'}
+        </h2>
+        <p className="text-[13px] text-ink-500 mb-6">
+          {assignmentError || '请联系老师重新布置，或去安全实验室自主练习。'}
+        </p>
+        <button className="btn-outline" onClick={() => navigate('/safety-lab')}>返回安全实验室</button>
+      </div>
+    );
+  }
 
   if (!examCategory || !notice) {
     return (
@@ -118,23 +205,28 @@ export default function SafetyExam() {
     handleAnswer(qid, cur);
   };
 
-  const submitExam = () => {
-    const unanswered = questions.filter((q) => answers[q.id] === undefined);
-    if (unanswered.length > 0) {
-      pushToast(`还有 ${unanswered.length} 道题未作答`, 'warning');
-      return;
+  /** 交卷。auto=true 表示到点自动交卷——此时不拦"未答完"，直接按已答的判分 */
+  function finalize(auto: boolean) {
+    if (questions.length === 0) return;
+    if (!auto) {
+      const unanswered = questions.filter((q) => answers[q.id] === undefined);
+      if (unanswered.length > 0) {
+        pushToast(`还有 ${unanswered.length} 道题未作答`, 'warning');
+        return;
+      }
     }
     let correct = 0;
     questions.forEach((q) => {
       if (isAnswerCorrect(q, answers[q.id])) correct++;
     });
     const score = Math.round((correct / questions.length) * 100);
-    const passed = score >= 80;
+    // 及格线取指派的设置，自由练习时沿用默认 80
+    const passed = score >= passScore;
     setSubmitted({ score, passed });
     setStep('result');
-    // 上报安全科目考核记录（用于安全实验室真实通过率）
+    // 上报考核记录；带 assignmentId 时后端会按指派及格线推导 passed
     if (userId && examCategory) {
-      safetyApi.record(examCategory, score, passed).catch(() => {});
+      safetyApi.record(examCategory, score, passed, assignment?.id).catch(() => {});
     }
 
     if (passed) {
@@ -143,9 +235,11 @@ export default function SafetyExam() {
     } else {
       if (project) updateStatus(project.id, 'frozen');
       setFrozenHintOpen(true);
-      pushToast(`未通过安全考核（${score} 分），30 分钟后方可重考`, 'error');
+      pushToast(`未通过安全考核（${score} 分，及格线 ${passScore}）`, 'error');
     }
-  };
+  }
+
+  const submitExam = () => finalize(false);
 
   const answeredCount = Object.keys(answers).length;
 
@@ -165,7 +259,7 @@ export default function SafetyExam() {
             <h2 className="font-serif text-lg font-semibold text-mission-900 truncate">{project ? project.title : `${CATEGORY_LABEL[examCategory]}安全考核`}</h2>
             <div className="flex flex-wrap gap-2 mt-1">
               <span className="chip chip-mission">{CATEGORY_LABEL[examCategory]}安全</span>
-              <span className="chip chip-ink">考核 {questions.length || availableCount} 题 · 80 分通过</span>
+              <span className="chip chip-ink">考核 {questions.length || effectiveExamCount} 题 · {passScore} 分通过</span>
             </div>
           </div>
         </div>
@@ -257,6 +351,18 @@ export default function SafetyExam() {
                 <span>答题卡</span>
                 <span className="font-semibold text-mission-700">{answeredCount}/{questions.length}</span>
               </div>
+              {/* 限时来自教师指派；自由练习不限时，不显示 */}
+              {timeBudgetSec > 0 && (
+                <div
+                  className={cn(
+                    'mb-3 flex items-center justify-center gap-1.5 py-2 rounded-xl font-mono font-black tabular-nums text-[15px]',
+                    remainingSec <= 60 ? 'bg-danger-50 text-danger-700 animate-pulse' : 'bg-mission-50 text-mission-700'
+                  )}
+                >
+                  <Clock size={14} />
+                  剩余 {timerText}
+                </div>
+              )}
               <div className="grid grid-cols-5 gap-2">
                 {questions.map((q, i) => {
                   const done = answers[q.id] !== undefined;
@@ -460,7 +566,7 @@ export default function SafetyExam() {
               <p className="text-ink-600 mb-4">
                 本次得分 <span className="font-mono font-bold text-2xl mx-1 text-mission-800">{submitted.score}</span> 分
                 <span className="text-ink-400 mx-1">（</span>
-                80 分通过
+                {passScore} 分通过
                 <span className="text-ink-400 mx-1">）</span>
               </p>
 
@@ -479,21 +585,22 @@ export default function SafetyExam() {
                 <div className="max-w-md mx-auto mb-6 p-5 rounded-xl2 bg-danger-50 ring-1 ring-danger-200 text-left space-y-2">
                   <div className="flex items-center gap-2 font-semibold text-danger-800">
                     <Clock size={18} />
-                    项目已进入冻结状态
+                    {project ? '项目已进入冻结状态' : '未达到及格线'}
                   </div>
                   <p className="text-sm text-ink-600 leading-relaxed">
-                    根据平台规则，安全考核未通过将自动冻结项目，防止未受训人员进入危险实验环节。
-                    请在 <strong className="text-danger-700">30 分钟后</strong> 重新发起考核。
+                    {project
+                      ? '根据平台规则，安全考核未通过将自动冻结项目，防止未受训人员进入危险实验环节。请在 30 分钟后重新发起考核。'
+                      : '请复习该领域的安全要点后重新考核，达到及格线即可通过。'}
                   </p>
                 </div>
               )}
 
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
-                  onClick={() => navigate(`/projects/${project.id}`)}
+                  onClick={() => navigate(project ? `/projects/${project.id}` : '/safety-lab')}
                   className={submitted.passed ? 'btn-primary' : 'btn-outline'}
                 >
-                  返回项目详情
+                  {project ? '返回项目详情' : '返回安全实验室'}
                 </button>
                 {!submitted.passed && (
                   <button
@@ -504,11 +611,11 @@ export default function SafetyExam() {
                       setAgreed(false);
                       setStep('notice');
                     }}
-                    disabled
-                    className="btn-ghost cursor-not-allowed opacity-70"
+                    disabled={!!project}
+                    className={project ? 'btn-ghost cursor-not-allowed opacity-70' : 'btn-outline'}
                   >
                     <Clock size={15} />
-                    30 分钟后可重新考核
+                    {project ? '30 分钟后可重新考核' : '立即重新考核'}
                   </button>
                 )}
               </div>

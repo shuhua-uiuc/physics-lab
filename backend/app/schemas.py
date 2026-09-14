@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -57,6 +57,9 @@ class SafetyRecordCreate(BaseModel):
     category: str
     score: int = Field(ge=0, le=100)
     passed: bool
+    # 来自哪条教师指派；自由练习为空。带了它时后端会忽略上面的 passed，
+    # 改由该指派的及格线推导（否则学生可伪造 passed=true）
+    assignmentId: str | None = None
 
 
 class SafetyRecordOut(BaseModel):
@@ -65,8 +68,45 @@ class SafetyRecordOut(BaseModel):
     score: int
     passed: bool
     created_at: datetime
+    assignment_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True, alias_generator=to_camel, populate_by_name=True)
+
+
+class SafetyAssignmentCreate(BaseModel):
+    """教师指派一次安全考核。目标必须且**只能**是班级或小组之一。
+
+    与其它请求模型一致：不继承 CamelModel，字段直接用字面 camelCase。
+    """
+
+    title: str = Field(min_length=1, max_length=60)
+    category: str
+    questionCount: int = Field(default=10, ge=1, le=100)
+    timeLimit: int = Field(default=15, ge=1, le=300)  # 分钟
+    passScore: int = Field(default=80, ge=0, le=100)
+    deadline: datetime | None = None
+    classId: str | None = None
+    groupId: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self):
+        if bool(self.classId) == bool(self.groupId):
+            raise ValueError("classId 与 groupId 必须且只能填一个")
+        return self
+
+
+class SafetyAssignmentOut(CamelModel):
+    id: str
+    title: str
+    category: str
+    question_count: int
+    time_limit: int
+    pass_score: int
+    deadline: datetime | None = None
+    class_id: str | None = None
+    group_id: str | None = None
+    created_by: str
+    created_at: datetime
 
 
 class TokenResponse(CamelModel):

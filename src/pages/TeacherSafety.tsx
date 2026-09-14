@@ -8,7 +8,7 @@
  *  - 导出当前题库 JSON
  *  - 一键恢复内置默认题库
  */
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldCheck,
@@ -23,9 +23,17 @@ import {
   AlertTriangle,
   FileUp,
   Loader2,
+  ClipboardList,
 } from 'lucide-react';
 import { useSafetyStore, normalizeQuestions } from '@/store/safetyStore';
 import { useUIStore } from '@/store/uiStore';
+import {
+  safetyAssignmentApi,
+  classesApi,
+  groupsApi,
+  SafetyAssignment,
+} from '@/lib/apiService';
+import type { SchoolClass, Group } from '@/data/mockData';
 import { Question, SafetyCategory } from '@/data/mockData';
 import { categoryNameMap } from '@/data/safetyContent';
 import { cn } from '@/lib/utils';
@@ -60,6 +68,29 @@ const blankEditor = (cat: SafetyCategory = 'electric'): EditorState => ({
   answer: 0,
 });
 
+/** 考核任务指派表单 */
+interface AssignEditor {
+  title: string;
+  cat: SafetyCategory;
+  questionCount: number;
+  timeLimit: number;
+  passScore: number;
+  deadline: string; // datetime-local 的值；空串 = 不限截止
+  targetKind: 'class' | 'group';
+  targetId: string;
+}
+
+const blankAssign = (cat: SafetyCategory = 'electric'): AssignEditor => ({
+  title: '',
+  cat,
+  questionCount: 10,
+  timeLimit: 15,
+  passScore: 80,
+  deadline: '',
+  targetKind: 'class',
+  targetId: '',
+});
+
 export default function TeacherSafety() {
   const pushToast = useUIStore((s) => s.pushToast);
   const questions = useSafetyStore((s) => s.questions);
@@ -78,6 +109,88 @@ export default function TeacherSafety() {
   const [importErr, setImportErr] = useState('');
   const [importing, setImporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
+
+  // ---- 考核任务指派 ----
+  const [assignments, setAssignments] = useState<SafetyAssignment[]>([]);
+  const [assignEditor, setAssignEditor] = useState<AssignEditor | null>(null);
+  const [assignErr, setAssignErr] = useState('');
+  const [savingAssign, setSavingAssign] = useState(false);
+  const [deleteAssignTarget, setDeleteAssignTarget] = useState<SafetyAssignment | null>(null);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+
+  const reloadAssignments = () => {
+    safetyAssignmentApi.list().then(setAssignments).catch(() => {});
+  };
+  useEffect(() => {
+    reloadAssignments();
+    classesApi.list().then(setClasses).catch(() => {});
+    groupsApi.list().then(setGroups).catch(() => {});
+  }, []);
+
+  const catQuestionCount = (cat: SafetyCategory) =>
+    questions.filter((q) => q.safetyCategory === cat).length;
+
+  const saveAssign = async () => {
+    if (!assignEditor) return;
+    const title = assignEditor.title.trim();
+    if (!title) return setAssignErr('请填写考核名称');
+    if (!assignEditor.targetId) {
+      return setAssignErr(assignEditor.targetKind === 'class' ? '请选择班级' : '请选择小组');
+    }
+    const avail = catQuestionCount(assignEditor.cat);
+    if (assignEditor.questionCount > avail) {
+      return setAssignErr(`该类别目前只有 ${avail} 道题，题数不能超过它`);
+    }
+    setSavingAssign(true);
+    try {
+      await safetyAssignmentApi.create({
+        title,
+        category: assignEditor.cat,
+        questionCount: assignEditor.questionCount,
+        timeLimit: assignEditor.timeLimit,
+        passScore: assignEditor.passScore,
+        deadline: assignEditor.deadline ? new Date(assignEditor.deadline).toISOString() : null,
+        classId: assignEditor.targetKind === 'class' ? assignEditor.targetId : null,
+        groupId: assignEditor.targetKind === 'group' ? assignEditor.targetId : null,
+      });
+      reloadAssignments();
+      setAssignEditor(null);
+      setAssignErr('');
+      pushToast(`已指派「${title}」`, 'success');
+    } catch (err) {
+      setAssignErr(err instanceof Error ? err.message : '指派失败');
+    } finally {
+      setSavingAssign(false);
+    }
+  };
+
+  const doDeleteAssign = async () => {
+    if (!deleteAssignTarget) return;
+    try {
+      await safetyAssignmentApi.remove(deleteAssignTarget.id);
+      reloadAssignments();
+      pushToast(`已撤销「${deleteAssignTarget.title}」`, 'success');
+    } catch {
+      pushToast('撤销失败', 'error');
+    } finally {
+      setDeleteAssignTarget(null);
+    }
+  };
+
+  const targetLabel = (a: SafetyAssignment) => {
+    if (a.groupId) {
+      return `小组 · ${groups.find((g) => g.id === a.groupId)?.name ?? a.groupId}`;
+    }
+    if (a.classId) {
+      return `班级 · ${classes.find((c) => c.id === a.classId)?.name ?? a.classId}`;
+    }
+    return '未指定对象';
+  };
+
+  const assignExpired = (a: SafetyAssignment) =>
+    !!a.deadline && new Date(a.deadline).getTime() < Date.now();
+
   const [resetOpen, setResetOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -304,6 +417,77 @@ export default function TeacherSafety() {
         >
           <RotateCcw size={15} /> 恢复内置题库
         </button>
+      </div>
+
+      {/* ===== 考核任务指派 ===== */}
+      <div className="glass-card p-5 rounded-[22px]">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div>
+            <h2 className="text-[16px] font-bold text-ink-800 flex items-center gap-2">
+              <ClipboardList size={17} className="text-growth-600" /> 考核任务指派
+            </h2>
+            <p className="text-[12.5px] text-ink-500 font-medium mt-0.5">
+              指派后，目标班级 / 小组的学生会在「安全实验室」看到这条考核，按你设定的题数与限时作答
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setAssignEditor(blankAssign(filterCat === 'all' ? 'electric' : filterCat));
+              setAssignErr('');
+            }}
+            className="ml-auto btn-mission inline-flex items-center gap-2 !py-2.5"
+          >
+            <Plus size={16} /> 新建指派
+          </button>
+        </div>
+
+        {assignments.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-ink-200 py-8 text-center text-[13px] text-ink-400">
+            还没有指派。点击「新建指派」把考核推送到班级或小组。
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {assignments.map((a) => {
+              const expired = assignExpired(a);
+              return (
+                <div
+                  key={a.id}
+                  className={cn(
+                    'flex flex-wrap items-center gap-3 rounded-2xl border p-3.5 transition',
+                    expired ? 'border-ink-100 bg-ink-50/60 opacity-70' : 'border-ink-100 bg-white/70'
+                  )}
+                >
+                  <div className="min-w-[180px] flex-1">
+                    <div className="text-[14px] font-bold text-ink-800 flex items-center gap-2">
+                      {a.title}
+                      {expired && <span className="chip-ink !py-0.5 !px-2 !text-[10px]">已截止</span>}
+                    </div>
+                    <div className="text-[12.5px] text-ink-500 font-medium mt-0.5">
+                      {categoryNameMap[a.category as SafetyCategory] ?? a.category}安全 · {targetLabel(a)}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+                    <span className="chip-growth !py-0.5 !px-2">{a.questionCount} 题</span>
+                    <span className="chip-energy !py-0.5 !px-2">{a.timeLimit} 分钟</span>
+                    <span className="chip-mission !py-0.5 !px-2">{a.passScore} 分及格</span>
+                    {a.deadline && (
+                      <span className="chip-ink !py-0.5 !px-2">
+                        截止 {new Date(a.deadline).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setDeleteAssignTarget(a)}
+                    className="w-9 h-9 rounded-xl glass-card glass-card-hover flex items-center justify-center text-ink-400 hover:text-danger-600"
+                    title="撤销指派"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 类别筛选 */}
@@ -675,6 +859,147 @@ export default function TeacherSafety() {
         title="恢复内置题库"
         message="将丢弃所有教师新增/修改/导入的题目，恢复为系统内置的标准安全考核题。此操作不可撤销。"
         confirmText="确认恢复"
+        danger
+      />
+
+      {/* ===== 新建指派 ===== */}
+      <AnimatePresence>
+        {assignEditor && (
+          <Modal onClose={() => setAssignEditor(null)} title="新建考核指派" wide>
+            <div className="space-y-3.5">
+              <label className="space-y-1 block">
+                <span className="text-[12.5px] font-semibold text-ink-600">考核名称</span>
+                <input
+                  value={assignEditor.title}
+                  onChange={(e) => setAssignEditor({ ...assignEditor, title: e.target.value })}
+                  placeholder="如：实验室用电安全考核"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                />
+              </label>
+
+              <label className="space-y-1 block">
+                <span className="text-[12.5px] font-semibold text-ink-600">安全类别</span>
+                <select
+                  value={assignEditor.cat}
+                  onChange={(e) => setAssignEditor({ ...assignEditor, cat: e.target.value as SafetyCategory })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {categoryNameMap[c]}安全（题库 {catQuestionCount(c)} 题）
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="space-y-1 block">
+                  <span className="text-[12.5px] font-semibold text-ink-600">题数</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={assignEditor.questionCount}
+                    onChange={(e) => setAssignEditor({ ...assignEditor, questionCount: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                  />
+                </label>
+                <label className="space-y-1 block">
+                  <span className="text-[12.5px] font-semibold text-ink-600">限时（分钟）</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={assignEditor.timeLimit}
+                    onChange={(e) => setAssignEditor({ ...assignEditor, timeLimit: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                  />
+                </label>
+                <label className="space-y-1 block">
+                  <span className="text-[12.5px] font-semibold text-ink-600">及格线</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={assignEditor.passScore}
+                    onChange={(e) => setAssignEditor({ ...assignEditor, passScore: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                  />
+                </label>
+              </div>
+
+              <label className="space-y-1 block">
+                <span className="text-[12.5px] font-semibold text-ink-600">截止时间（可选）</span>
+                <input
+                  type="datetime-local"
+                  value={assignEditor.deadline}
+                  onChange={(e) => setAssignEditor({ ...assignEditor, deadline: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                />
+              </label>
+
+              <div className="space-y-2">
+                <span className="text-[12.5px] font-semibold text-ink-600">指派给</span>
+                <div className="flex gap-2">
+                  {(['class', 'group'] as const).map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setAssignEditor({ ...assignEditor, targetKind: k, targetId: '' })}
+                      className={cn(
+                        'px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold transition border',
+                        assignEditor.targetKind === k
+                          ? 'bg-gradient-to-br from-growth-400 to-growth-600 text-white border-transparent shadow-md'
+                          : 'glass-card text-ink-600 border-ink-100 hover:border-growth-300'
+                      )}
+                    >
+                      {k === 'class' ? '整个班级' : '单个小组'}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={assignEditor.targetId}
+                  onChange={(e) => setAssignEditor({ ...assignEditor, targetId: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white/80 text-[13.5px] focus:outline-none focus:border-growth-400"
+                >
+                  <option value="">请选择{assignEditor.targetKind === 'class' ? '班级' : '小组'}</option>
+                  {(assignEditor.targetKind === 'class' ? classes : groups).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {assignErr && (
+                <div className="rounded-xl bg-danger-50 text-danger-600 text-[12.5px] font-medium px-3.5 py-2.5">
+                  {assignErr}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button className="btn-ghost-mission flex-1" onClick={() => setAssignEditor(null)}>
+                  取消
+                </button>
+                <button
+                  className="btn-growth flex-1 inline-flex items-center justify-center gap-2"
+                  onClick={saveAssign}
+                  disabled={savingAssign}
+                >
+                  {savingAssign ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                  确认指派
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
+
+      {/* ===== 撤销指派确认 ===== */}
+      <ConfirmModal
+        open={!!deleteAssignTarget}
+        onClose={() => setDeleteAssignTarget(null)}
+        onConfirm={doDeleteAssign}
+        title="撤销指派"
+        message={`确定撤销这条考核指派吗？\n「${deleteAssignTarget?.title ?? ''}」\n学生将不再在安全实验室看到它（已提交的成绩保留）。`}
+        confirmText="确认撤销"
         danger
       />
     </div>

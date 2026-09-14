@@ -2,12 +2,23 @@ import random
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .. import services
 from ..database import get_db
 from ..deps import get_current_user, require_teacher
-from ..models import Challenge, Group, Question, QuizSession, SafetyRecord, Topic, User
+from ..models import (
+    Challenge,
+    Class,
+    Group,
+    Question,
+    QuizSession,
+    SafetyAssignment,
+    SafetyRecord,
+    Topic,
+    User,
+)
 from ..schemas import (
     ChallengeCreate,
     ChallengeOut,
@@ -16,6 +27,8 @@ from ..schemas import (
     QuizAnswerRequest,
     QuizSessionOut,
     QuizStartRequest,
+    SafetyAssignmentCreate,
+    SafetyAssignmentOut,
     SafetyImportRequest,
     SafetyQuestionInput,
     SafetyQuestionUpdate,
@@ -388,13 +401,26 @@ def create_safety_record(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    """记录一次安全科目考核结果（用于安全实验室按真实记录算通过率）。"""
+    """记录一次安全科目考核结果（用于安全实验室按真实记录算通过率）。
+
+    带了 assignmentId（来自教师指派）时，**忽略客户端传来的 passed**，改由该指派的
+    及格线推导——否则学生可以 POST `{score: 0, passed: true}` 伪造通过。
+    自由练习（无 assignmentId）保持原行为。
+    """
+    passed = payload.passed
+    if payload.assignmentId:
+        assignment = db.get(SafetyAssignment, payload.assignmentId)
+        if not assignment:
+            raise HTTPException(status_code=404, detail="指派不存在")
+        passed = payload.score >= assignment.pass_score
+
     rec = SafetyRecord(
         id=services.gen_id("srec_"),
         user_id=current.id,
         category=payload.category,
         score=payload.score,
-        passed=payload.passed,
+        passed=passed,
+        assignment_id=payload.assignmentId,
     )
     db.add(rec)
     db.commit()
@@ -411,3 +437,94 @@ def list_safety_records(db: Session = Depends(get_db), current: User = Depends(g
         .order_by(SafetyRecord.created_at.desc())
         .all()
     )
+
+
+# ---------- Safety exam assignments（教师指派） ----------
+def _assignment_visible_to(a: SafetyAssignment, current: User) -> bool:
+    """教师/管理员可见全部；学生只能看到指派给自己班级或小组的。"""
+    if current.account_role in ("teacher", "admin"):
+        return True
+    if a.group_id and a.group_id == current.group_id:
+        return True
+    if a.class_id and a.class_id == current.class_id:
+        return True
+    return False
+
+
+@router.post("/safety/assignments", response_model=SafetyAssignmentOut, status_code=201)
+def create_safety_assignment(
+    payload: SafetyAssignmentCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_teacher),
+):
+    """教师指派一次安全考核（目标为班级或小组之一）。"""
+    if payload.classId and db.get(Class, payload.classId) is None:
+        raise HTTPException(status_code=400, detail="班级不存在")
+    if payload.groupId and db.get(Group, payload.groupId) is None:
+        raise HTTPException(status_code=400, detail="小组不存在")
+
+    item = SafetyAssignment(
+        id=services.gen_id("sasgn_"),
+        title=payload.title.strip(),
+        category=payload.category,
+        question_count=payload.questionCount,
+        time_limit=payload.timeLimit,
+        pass_score=payload.passScore,
+        deadline=payload.deadline,
+        class_id=payload.classId,
+        group_id=payload.groupId,
+        created_by=current.id,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/safety/assignments", response_model=list[SafetyAssignmentOut])
+def list_safety_assignments(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """教师/管理员看全部；学生只看指派到自己班级或小组的（按创建时间倒序）。"""
+    q = db.query(SafetyAssignment)
+    if current.account_role not in ("teacher", "admin"):
+        # 只对"学生身上确实有值"的目标加条件：写成 `group_id == None` 会被
+        # 渲染成 `group_id IS NULL`，反而匹配到所有未指定小组的指派。
+        conds = []
+        if current.group_id:
+            conds.append(SafetyAssignment.group_id == current.group_id)
+        if current.class_id:
+            conds.append(SafetyAssignment.class_id == current.class_id)
+        if not conds:
+            return []
+        q = q.filter(or_(*conds))
+    return q.order_by(SafetyAssignment.created_at.desc()).all()
+
+
+@router.get("/safety/assignments/{assignment_id}", response_model=SafetyAssignmentOut)
+def get_safety_assignment(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    item = db.get(SafetyAssignment, assignment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="指派不存在")
+    if not _assignment_visible_to(item, current):
+        raise HTTPException(status_code=403, detail="无权查看该指派")
+    return item
+
+
+@router.delete("/safety/assignments/{assignment_id}")
+def delete_safety_assignment(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    item = db.get(SafetyAssignment, assignment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="指派不存在")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
