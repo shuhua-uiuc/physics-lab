@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useCoinStore } from '@/store/coinStore';
+import { computeEarnedByUser } from '@/lib/earnedCoins';
 
 /**
  * 我的小组 —— 学生查看本组成员、各自能量与贡献占比。
@@ -42,22 +43,8 @@ export default function MyTeam() {
   //   1) 只取正增量——标签是"获得"，把扣减的负数也算进去会显示成 -12 这种误导值；
   //   2) 尊重 source='reset' 标记（教师端「清零累计获得」写入的）——只统计该标记之后的流水，
   //      于是清零后归 0，而历史流水一条不删。
-  const earnedByUser = useMemo(() => {
-    const at = (d: Date | string) => new Date(d).getTime();
-    const lastReset: Record<string, number> = {};
-    for (const tx of coinTxs) {
-      if (tx.source !== 'reset' || !tx.userId) continue;
-      const t = at(tx.createdAt);
-      if (!lastReset[tx.userId] || t > lastReset[tx.userId]) lastReset[tx.userId] = t;
-    }
-    const m: Record<string, number> = {};
-    for (const tx of coinTxs) {
-      if (!tx.userId || tx.delta <= 0) continue;
-      if (lastReset[tx.userId] && at(tx.createdAt) <= lastReset[tx.userId]) continue;
-      m[tx.userId] = (m[tx.userId] || 0) + tx.delta;
-    }
-    return m;
-  }, [coinTxs]);
+  // 口径见 lib/earnedCoins.ts（与教师端「学生名单」共用同一函数，避免两处走偏）
+  const earnedByUser = useMemo(() => computeEarnedByUser(coinTxs), [coinTxs]);
 
   // 贡献占比：以个人能量占全组个人能量之和计算；全组为 0 时不显示（不编造百分比）
   const personalTotal = useMemo(

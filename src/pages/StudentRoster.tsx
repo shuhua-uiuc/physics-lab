@@ -8,7 +8,7 @@
  *  - 删除学生
  *  - 每班人数上限 30
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -22,10 +22,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
+  Zap,
+  RotateCcw,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useGroupStore } from '@/store/groupStore';
-import { classesApi } from '@/lib/apiService';
+import { useCoinStore } from '@/store/coinStore';
+import { classesApi, usersApi } from '@/lib/apiService';
+import { syncToApi } from '@/lib/syncQueue';
+import { computeEarnedByUser } from '@/lib/earnedCoins';
 import type { SchoolClass, User } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +39,25 @@ const MAX_STUDENTS = 30;
 export default function StudentRoster() {
   const pushToast = useUIStore((s) => s.pushToast);
   const getGroupById = useGroupStore((s) => s.getGroupById);
+  const coinTxs = useCoinStore((s) => s.coinTxs);
+  const addTx = useCoinStore((s) => s.addTx);
+  // 「累计获得」= 该学生名下、最近一次清零之后的正向流水之和（口径与我的小组页共用）
+  const earnedByUser = useMemo(() => computeEarnedByUser(coinTxs), [coinTxs]);
+
+  /** 清零某学生的「累计获得」：写入一条 reset 标记流水，不动个人能量、不删历史 */
+  const clearEarned = (s: User) => {
+    if (!s.groupId) {
+      pushToast(`${s.name} 尚未加入小组，无法清零`, 'error');
+      return;
+    }
+    addTx(
+      s.groupId,
+      { source: 'reset', refId: `reset-${Date.now()}`, delta: 0, note: `清零「${s.name}」累计获得` },
+      s.id
+    );
+    syncToApi(() => usersApi.resetEarned(s.id), 'users.resetEarned');
+    pushToast(`已清零 ${s.name} 的累计获得`, 'success');
+  };
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, User[]>>({});
@@ -326,6 +350,7 @@ export default function StudentRoster() {
                       <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">用户名</th>
                       <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">小组</th>
                       <th className="text-left text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">角色</th>
+                      <th className="text-right text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">累计获得</th>
                       <th className="text-right text-[11px] font-bold text-ink-400 uppercase tracking-wider px-5 py-3">操作</th>
                     </tr>
                   </thead>
@@ -363,13 +388,29 @@ export default function StudentRoster() {
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => setDeleteStudentId({ id: s.id, name: s.name })}
-                            className="w-7 h-7 rounded-lg hover:bg-danger-50 flex items-center justify-center text-ink-400 hover:text-danger-600 transition opacity-0 group-hover:opacity-100 inline-flex"
-                            title="删除"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <span className="text-[12.5px] font-bold text-mission-600 tabular-nums inline-flex items-center gap-0.5 justify-end">
+                            {earnedByUser[s.id] || 0}
+                            <Zap size={11} className="text-mission-500" />
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => clearEarned(s)}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold text-ink-500 hover:text-alert-600 hover:bg-alert-50 transition inline-flex items-center gap-1"
+                              title="清零该学生的累计获得（不改个人能量、不删历史流水）"
+                            >
+                              <RotateCcw size={12} />
+                              清零累计
+                            </button>
+                            <button
+                              onClick={() => setDeleteStudentId({ id: s.id, name: s.name })}
+                              className="w-7 h-7 rounded-lg hover:bg-danger-50 flex items-center justify-center text-ink-400 hover:text-danger-600 transition opacity-0 group-hover:opacity-100 inline-flex"
+                              title="删除"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
