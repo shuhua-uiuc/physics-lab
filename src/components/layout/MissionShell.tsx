@@ -216,20 +216,28 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3 md:w-[380px] justify-end ml-auto shrink-0">
-        {/* 窄屏放不下能量卡，手机上隐藏（能量在 Dashboard / 我的小组里都有） */}
-        <div className="hidden md:flex glass-card px-3.5 py-2 rounded-2xl items-center gap-2.5 group cursor-pointer">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-full bg-energy-400/30 blur-md animate-pulse" />
-            <Zap size={18} className="text-energy-500 relative z-10 fill-energy-400/30" />
+      {/* md:w-[380px] 是给学生的能量卡预留的宽度；教师/管理员没有能量卡，留固定宽会空一大块 */}
+      <div
+        className={cn(
+          'flex items-center gap-2 md:gap-3 justify-end ml-auto shrink-0',
+          role === 'student' && 'md:w-[380px]'
+        )}
+      >
+        {/* 能量卡与等级都是**小组**指标（读 currentGroup.totalCoins）。教师/管理员没有小组，
+            一直显示 0 / LV1，看着像坏了——这两个只对学生有意义，其余角色不渲染。
+            窄屏放不下能量卡，手机上同样隐藏（能量在 Dashboard / 我的小组里都有）。 */}
+        {role === 'student' && (
+          <div className="hidden md:flex glass-card px-3.5 py-2 rounded-2xl items-center gap-2.5 group cursor-pointer">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-energy-400/30 blur-md animate-pulse" />
+              <Zap size={18} className="text-energy-500 relative z-10 fill-energy-400/30" />
+            </div>
+            <div className="text-[16px] font-extrabold text-gradient-energy leading-none tabular-nums">
+              {coreCoins}
+            </div>
+            <div className="text-[10px] text-ink-400 font-medium">⚡CORE</div>
           </div>
-          <div className="text-[16px] font-extrabold text-gradient-energy leading-none tabular-nums">
-            {coreCoins}
-          </div>
-          <div className="text-[10px] text-ink-400 font-medium">⚡CORE</div>
-        </div>
-
-        
+        )}
 
         <div className="flex items-center gap-2.5">
           <div className="relative group">
@@ -250,10 +258,12 @@ function MissionHeader({ onOpenNav }: { onOpenNav: () => void }) {
               </div>
             )}
           </div>
-          <div className="hidden sm:flex chip-nova !py-1 !px-2.5 items-center gap-1">
-            <span className="text-[10px] font-black tracking-wider">LV{level}</span>
-            <span className="text-[11px] font-semibold">Researcher</span>
-          </div>
+          {role === 'student' && (
+            <div className="hidden sm:flex chip-nova !py-1 !px-2.5 items-center gap-1">
+              <span className="text-[10px] font-black tracking-wider">LV{level}</span>
+              <span className="text-[11px] font-semibold">Researcher</span>
+            </div>
+          )}
         </div>
 
         <button
@@ -526,7 +536,7 @@ function ToastStack() {
     <>
       <button
         onClick={toggleToasts}
-        className="fixed top-[60px] right-6 z-100 w-10 h-10 rounded-2xl glass-card glass-card-hover flex items-center justify-center text-ink-600 hover:text-mission-600 transition-all hover:scale-105"
+        className="fixed top-[60px] right-6 z-[100] w-10 h-10 rounded-2xl glass-card glass-card-hover flex items-center justify-center text-ink-600 hover:text-mission-600 transition-all hover:scale-105"
       >
         <Bell size={18} />
         {toasts.length > 0 && (
@@ -546,7 +556,7 @@ function ToastStack() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-99"
+            className="fixed inset-0 z-[99]"
             onClick={() => setIsOpen(false)}
           />
         )}
