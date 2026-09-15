@@ -163,6 +163,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const pushToast = useUIStore((s) => s.pushToast);
   const { userId, role, groupId, classId } = useAuthStore();
+  const authName = useAuthStore((s) => s.name);
   const setGroupId = useAuthStore((s) => s.setGroupId);
   const getUserById = useGroupStore((s) => s.getUserById);
   const groups = useGroupStore((s) => s.groups);
@@ -225,9 +226,13 @@ export default function Dashboard() {
 
   const currentUser = useMemo(() => {
     if (!userId) return null;
-    if (role === 'teacher') return { name: '杨静老师' };
-    return getUserById(userId);
-  }, [userId, role, getUserById]);
+    const fromRoster = getUserById(userId);
+    if (fromRoster) return fromRoster;
+    // 教师/管理员通常不在学生名单里，回退到登录态里的名字。
+    // 原先这里写死了一个真人姓名「杨静老师」，换个老师就显示错人。
+    const fallback = role === 'teacher' ? '老师' : role === 'admin' ? '管理员' : '研究员';
+    return { name: authName || fallback };
+  }, [userId, role, getUserById, authName]);
 
   // 当前学生所属项目组（用于欢迎语展示）
   const getGroupById = useGroupStore((s) => s.getGroupById);
@@ -362,12 +367,16 @@ export default function Dashboard() {
   };
 
   const learningPathProgress = useMemo(() => {
-    const hasQuizSession = quizSessions.length > 0;
-    const hasPassedQuiz = quizSessions.some((s) => s.passed);
+    // --- 前 5 步：按「当前学生自己」的测验记录判定 ---
+    // 在线时 quizSessions 由后端按 user_id 返回（bootstrap 拉取），离线时是本机记录。
+    // 三个不同的信号，避免做一次测验就让 01/02/03 三盏一起亮：
+    const hasStartedQuiz = quizSessions.length > 0;
+    const hasAnsweredQuiz = quizSessions.some((s) => Object.keys(s.userAnswers || {}).length > 0);
+    const hasGradedQuiz = quizSessions.some((s) => s.graded);
     const hasBlindPoints = quizSessions.some((s) => s.blindPoints.length > 0);
+    const hasPassedQuiz = quizSessions.some((s) => s.passed);
 
-    // 以下一律按「本组」口径统计。此前用的是全系统数据（projects.length > 0 之类），
-    // 导致任何一个小组做了项目，全校学生都被算作"已完成"，人人都显示同一个进度。
+    // --- 后 6 步：按「本组」口径统计 ---
     const hasCreatedChallenge = challenges.some((c) => c.creatorGroupId === groupId);
     const hasSubmittedChallenge = challenges.some((c) =>
       c.submissions?.some((s) => s.groupId === groupId)
@@ -378,30 +387,27 @@ export default function Dashboard() {
     const hasProjectInProgress = myGroupProjects.some((p) => p.progress > 50);
     const hasShowcase = showcaseItems.some((s) => s.groupId === groupId);
 
-    const progressMap: Record<string, { done: boolean; active: boolean }> = {
-      ai_learn: { done: hasQuizSession, active: !hasQuizSession && false },
-      knowledge_organize: { done: hasQuizSession, active: false },
-      ai_test: { done: hasQuizSession, active: false },
-      intensive_training: { done: hasBlindPoints, active: hasQuizSession && !hasBlindPoints },
-      pass_80: { done: hasPassedQuiz, active: hasQuizSession && !hasPassedQuiz },
-      create_quiz: { done: hasCreatedChallenge, active: hasPassedQuiz && !hasCreatedChallenge },
-      challenge_other: { done: hasSubmittedChallenge, active: hasCreatedChallenge && !hasSubmittedChallenge },
-      earn_energy: { done: hasCoinTransaction, active: hasSubmittedChallenge && !hasCoinTransaction },
-      project_dev: { done: hasProject, active: hasCoinTransaction && !hasProject },
-      experiment: { done: hasProjectInProgress, active: hasProject && !hasProjectInProgress },
-      showcase: { done: hasShowcase, active: hasProjectInProgress && !hasShowcase },
+    const doneMap: Record<string, boolean> = {
+      ai_learn: hasStartedQuiz,
+      knowledge_organize: hasAnsweredQuiz,
+      ai_test: hasGradedQuiz,
+      intensive_training: hasBlindPoints,
+      pass_80: hasPassedQuiz,
+      create_quiz: hasCreatedChallenge,
+      challenge_other: hasSubmittedChallenge,
+      earn_energy: hasCoinTransaction,
+      project_dev: hasProject,
+      experiment: hasProjectInProgress,
+      showcase: hasShowcase,
     };
 
-    let firstIncompleteIndex = -1;
-    LEARNING_PATH_CONFIG.forEach((step, index) => {
-      if (!progressMap[step.id].done && firstIncompleteIndex === -1) {
-        firstIncompleteIndex = index;
-      }
+    // active 一律「按顺序推导」：第一个未完成的步骤就是当前步骤。
+    // 原先每个步骤各写一句 active 表达式，正是 STEP 01 判定写歪的来源。
+    const firstIncomplete = LEARNING_PATH_CONFIG.find((s) => !doneMap[s.id])?.id;
+    const progressMap: Record<string, { done: boolean; active: boolean }> = {};
+    LEARNING_PATH_CONFIG.forEach((s) => {
+      progressMap[s.id] = { done: doneMap[s.id], active: s.id === firstIncomplete };
     });
-
-    if (firstIncompleteIndex > 0) {
-      progressMap[LEARNING_PATH_CONFIG[firstIncompleteIndex].id].active = true;
-    }
 
     return progressMap;
   }, [quizSessions, challenges, coinTxs, projects, showcaseItems, groupId]);
@@ -422,15 +428,37 @@ export default function Dashboard() {
   const coinWeekVal = sumDelta(Date.now() - 7 * DAY);
   const levelThreshold = (lv: number) => Math.pow(10, lv / 2) | 0;
   const upgradeNeedVal = Math.max(0, levelThreshold(levelOf(myCoins) + 1) - myCoins);
-  const todayProgress = Math.round((completedSteps / Math.max(1, LEARNING_PATH_CONFIG.length)) * 100);
+  // 当前等级的区间进度。原先这条进度条写死 width:'62%'、刻度也写死 62%，
+  // 跟上面真算出来的「距升级 X⚡」自相矛盾。
+  const lvNow = levelOf(myCoins);
+  const lvFloor = levelThreshold(lvNow);
+  const lvCeil = levelThreshold(lvNow + 1);
+  const levelProgress = Math.max(
+    0,
+    Math.min(100, Math.round(((myCoins - lvFloor) / Math.max(1, lvCeil - lvFloor)) * 100))
+  );
+  // 这就是学习路径的完成度（= 下面那行「已完成 X/11」）。原先叫 todayProgress 并标成
+  // 「今日任务进度」，与「今日」无关，也跟旁边那 4 条写死的清单对不上。
+  const pathProgress = Math.round((completedSteps / Math.max(1, LEARNING_PATH_CONFIG.length)) * 100);
+
+  /** 环下面那条「接下来做什么」：按顺序取未完成的步骤，全部来自真实状态。 */
+  const upcomingSteps = useMemo(
+    () =>
+      LEARNING_PATH_CONFIG
+        .map((s, i) => ({ id: s.id, step: i + 1, name: s.name, ...learningPathProgress[s.id] }))
+        .filter((s) => !s.done)
+        .slice(0, 4),
+    [learningPathProgress]
+  );
 
   const teamRanking = useMemo(
     () =>
       [...groups]
         .sort((a, b) => b.totalCoins - a.totalCoins)
         .slice(0, 6)
-        .map((g) => ({
-          rank: 0,
+        .map((g, i) => ({
+          // 列表已按能量降序，名次就是下标 +1。原先写死 0，界面上 4–6 名全显示「#0」。
+          rank: i + 1,
           name: g.name,
           level: `LV${levelOf(g.totalCoins)}`,
           coins: g.totalCoins,
@@ -492,7 +520,15 @@ export default function Dashboard() {
     [recruitments, projects]
   );
 
-  const achievements = useMemo(() => showcaseItems.slice(0, 6).map((s) => ({ title: s.title || '成果展示' })), [showcaseItems]);
+  const achievements = useMemo(
+    () =>
+      showcaseItems.slice(0, 6).map((s) => ({
+        title: s.title || '成果展示',
+        // 组员数取该作品真实所属小组的人数。原先界面上是写死的 `{4 + (i % 3)}人`。
+        members: users.filter((u) => u.groupId === s.groupId).length,
+      })),
+    [showcaseItems, users]
+  );
 
   const coinTotal = useCountUp(myCoins);
   const coinToday = useCountUp(coinTodayVal);
@@ -501,6 +537,7 @@ export default function Dashboard() {
   const newsCoin1 = useCountUp(labNews[0]?.coin || 0);
   const newsCoin2 = useCountUp(labNews[1]?.coin || 0);
   const newsCoin3 = useCountUp(labNews[2]?.coin || 0);
+  const newsCoin4 = useCountUp(labNews[3]?.coin || 0);
   const newsCoin5 = useCountUp(labNews[4]?.coin || 0);
   const recruit0 = useCountUp(recruitList[0]?.reward || 0);
   const recruit1 = useCountUp(recruitList[1]?.reward || 0);
@@ -627,7 +664,7 @@ export default function Dashboard() {
                 )}
               </h1>
               <p className="mt-3 text-[15px] text-ink-500 font-medium">
-                今日任务进度 <span className="text-mission-600 font-bold">{todayProgress}%</span>，
+                学习路径进度 <span className="text-mission-600 font-bold">{pathProgress}%</span>，
                 距离晋升 <span className="chip-nova !py-0.5 !px-2 mx-0.5">LV{levelOf(myCoins)}</span> 还需
                 <span className="text-gradient-energy font-bold ml-1"> {upgradeNeed}⚡</span>
               </p>
@@ -636,7 +673,7 @@ export default function Dashboard() {
 
           <div className="relative flex gap-4 mt-6 overflow-x-auto scroll-thin pb-1">
             <div className="rounded-[20px] bg-gradient-to-br from-mission-50/80 via-white/95 to-nova-50/50 border border-mission-100/60 p-4">
-              <TaskCard onClick={() => { navigate('/theory/topics'); pushToast('进入 AI 自学中心 · 今天也加油 🚀', 'info'); }} icon={Brain} title="AI理论学习" progress={todayProgress} reward={0} status={todayProgress >= 80 ? '已解锁' : '进行中'} tint="mission" />
+              <TaskCard onClick={() => { navigate('/theory/topics'); pushToast('进入 AI 自学中心 · 今天也加油 🚀', 'info'); }} icon={Brain} title="AI理论学习" progress={learningPathProgress.ai_test.done ? 100 : learningPathProgress.ai_learn.done ? 50 : 0} reward={0} status={learningPathProgress.pass_80.done ? '已解锁' : '进行中'} tint="mission" />
             </div>
             <div className="rounded-[20px] bg-gradient-to-br from-energy-50/80 via-white/95 to-alert-50/50 border border-energy-100/60 p-4">
               <TaskCard onClick={() => { navigate('/projects'); pushToast('进入项目管理中心 · 任务已就绪', 'info'); }} icon={FlaskConical} title="项目研发" progress={avgProjectProgress} reward={projectReward} status="进行中" tint="energy" />
@@ -656,41 +693,44 @@ export default function Dashboard() {
             <span className="chip-ink !px-2.5 !py-1">Current Rank</span>
             <span className="chip-nova !py-1 !px-2.5">LV{levelOf(myCoins)}</span>
           </div>
-          <h3 className="mt-2 text-[18px] font-extrabold text-ink-800">今日任务进度</h3>
+          <h3 className="mt-2 text-[18px] font-extrabold text-ink-800">学习路径进度</h3>
 
           <div className="flex items-center justify-center my-5">
             <div className="relative">
-              <ProgressRing size={160} stroke={10} progress={todayProgress} />
+              <ProgressRing size={160} stroke={10} progress={pathProgress} />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-[44px] font-black text-gradient-mission leading-none tabular-nums">{todayProgress}%</div>
-                <div className="text-[11px] text-ink-500 font-semibold mt-1.5 tracking-wide">TODAY PROGRESS</div>
+                <div className="text-[44px] font-black text-gradient-mission leading-none tabular-nums">{pathProgress}%</div>
+                <div className="text-[11px] text-ink-500 font-semibold mt-1.5 tracking-wide">LEARNING PATH</div>
               </div>
             </div>
           </div>
 
-          <div className="space-y-2.5">
-            {[
-              { label: 'AI学习：电磁学·第3章', done: true },
-              { label: '检测：15题 正确率 93%', done: true },
-              { label: '项目：磁悬浮 搭建进度', done: true, active: true },
-              { label: '挑战：回复2组邀请', done: false },
-            ].map((step, i) => (
-              <div key={i} className="flex items-center gap-3 group">
-                <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 transition-all ${
-                  step.done
-                    ? 'bg-gradient-to-br from-growth-400 to-growth-600 text-white shadow-sm'
-                    : step.active
+          {/* 接下来要做的步骤——全部来自真实状态。
+              原先这里是 4 条写死的假任务（含编造的「检测：15题 正确率 93%」），
+              每个学生看到的一模一样，还标着 3/4 已完成、跟上面的环自相矛盾。 */}
+          {upcomingSteps.length === 0 ? (
+            <div className="text-center text-[12.5px] text-growth-700 font-semibold py-4">
+              11 步学习闭环已全部完成 🎉
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <div className="text-[11px] text-ink-400 font-semibold uppercase tracking-wider">接下来</div>
+              {upcomingSteps.map((step) => (
+                <div key={step.id} className="flex items-center gap-3 group">
+                  <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                    step.active
                       ? 'bg-gradient-to-br from-mission-400 to-nova-500 text-white ring-2 ring-mission-200/50 animate-pulse'
                       : 'bg-ink-100 text-ink-400'
-                }`}>
-                  {step.done ? <CheckCircle2 size={13} strokeWidth={3} /> : step.active ? <CircleDot size={12} /> : <Lock size={11} />}
+                  }`}>
+                    {step.active ? <CircleDot size={12} /> : <Lock size={11} />}
+                  </div>
+                  <div className={`text-[12.5px] font-medium leading-tight ${step.active ? 'text-ink-900 font-semibold' : 'text-ink-400'}`}>
+                    STEP {String(step.step).padStart(2, '0')} · {step.name}
+                  </div>
                 </div>
-                <div className={`text-[12.5px] font-medium leading-tight ${step.done ? 'text-ink-600 line-through decoration-ink-200' : step.active ? 'text-ink-900 font-semibold' : 'text-ink-400'}`}>
-                  {step.label}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -790,10 +830,10 @@ export default function Dashboard() {
                   <span className="text-[11px] font-bold text-ink-500">距升级 {upgradeNeed}⚡</span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-ink-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-mission-400 via-mission-500 to-nova-500" style={{ width: '62%' }} />
+                  <div className="h-full rounded-full bg-gradient-to-r from-mission-400 via-mission-500 to-nova-500" style={{ width: `${levelProgress}%` }} />
                 </div>
                 <div className="flex justify-between mt-1 text-[10px] font-mono text-ink-400">
-                  <span>0</span><span className="font-bold text-mission-600">62%</span><span>100</span>
+                  <span>{lvFloor}</span><span className="font-bold text-mission-600">{levelProgress}%</span><span>{lvCeil}</span>
                 </div>
               </div>
             </div>
@@ -931,7 +971,7 @@ export default function Dashboard() {
                     {n.coin > 0 && (
                       <div className="shrink-0 flex items-center gap-0.5 text-gradient-energy font-black tabular-nums text-[13px]">
                         <Zap size={12} />
-                        +{[newsCoin1, newsCoin2, newsCoin3, 0, newsCoin5][i]}
+                        +{[newsCoin1, newsCoin2, newsCoin3, newsCoin4, newsCoin5][i]}
                       </div>
                     )}
                   </div>
@@ -1009,7 +1049,7 @@ export default function Dashboard() {
                 <span className="mission-label">RECRUITMENT DESK</span>
                 <h3 className="text-[20px] font-extrabold text-ink-800">招募大厅 · 专家悬赏</h3>
               </div>
-              <button className="btn-ghost text-[12px] !py-1.5 !px-3" onClick={() => { navigate('/recruit/market'); pushToast('招募市场已展开 · 共 6 条新任务待接取 🧑‍🚀', 'info'); }}>
+              <button className="btn-ghost text-[12px] !py-1.5 !px-3" onClick={() => { navigate('/recruit/market'); pushToast(`招募市场已展开 · 共 ${recruitments.filter((r) => r.status === 'open').length} 条新任务待接取 🧑‍🚀`, 'info'); }}>
                 查看全部<ArrowRight size={13} />
               </button>
             </div>
@@ -1165,7 +1205,7 @@ export default function Dashboard() {
                 <span className="mission-label">Achievement Hall</span>
                 <h3 className="text-[19px] font-extrabold text-ink-800">成果展示 · 精选瀑布</h3>
               </div>
-              <button className="btn-ghost text-[12px] !py-1.5 !px-3" onClick={() => { navigate('/showcase'); pushToast('进入成果展览馆 · 6 份新作品已更新 🏆', 'info'); }}>
+              <button className="btn-ghost text-[12px] !py-1.5 !px-3" onClick={() => { navigate('/showcase'); pushToast(`进入成果展览馆 · ${showcaseItems.length} 份作品 🏆`, 'info'); }}>
                 <Eye size={13} className="mr-1" />查看大厅
               </button>
             </div>
@@ -1189,7 +1229,7 @@ export default function Dashboard() {
                         <Award size={8} />A{String(i + 1).padStart(2, '0')}
                       </span>
                       <span className="chip-ink !py-0.5 !px-1.5 !text-[9.5px]">
-                        <Users size={8} className="mr-0.5" />{4 + (i % 3)}人
+                        <Users size={8} className="mr-0.5" />{a.members}人
                       </span>
                     </div>
                     <div className="text-[12.5px] font-bold text-white drop-shadow leading-tight">
