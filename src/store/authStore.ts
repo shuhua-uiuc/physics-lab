@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { CurrentUser, UserRole, LS_KEYS, loadLS, saveLS } from '../data/mockData';
 import { apiEnabled, apiLogin, apiLogout, apiRegister, getToken, RegisterPayload } from '../lib/apiClient';
+import { clearBusinessData } from '../lib/sessionCleanup';
+import { resetBootstrap } from '../lib/bootstrap';
 
 interface AuthState extends CurrentUser {
   /** 登录用户显示名（后端模式下由 JWT 登录结果填充）。 */
@@ -133,6 +135,12 @@ export const useAuthStore = create<AuthState>((set) => {
 
     logout: () => {
       apiLogout();
+      // 在线模式清掉「属于这个人」的业务数据，避免共享电脑上换人登录读到上一个人的记录。
+      // 离线模式没有后端可回填，不清——否则本地演示数据（分组/项目/流水）会被清光。
+      if (apiEnabled) {
+        clearBusinessData();
+        resetBootstrap(); // 下次登录重新拉一遍，别复用本轮的 loaded 标记
+      }
       const next = { userId: null, classId: null, groupId: null, role: null, name: null };
       persist(next);
       set({ ...next, authError: null });

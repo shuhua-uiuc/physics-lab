@@ -69,7 +69,7 @@ Tailwind + 语义色 token（`mission/energy/growth/nova/alert/danger/ink`）。
 - 改导航/路由前先读 `src/App.tsx`（唯一路由表）；`src/pages/` 里可能留有没被任何路由引用的文件。
 - **加路由时 `MissionShell` 只包一层**：`src/App.tsx` 已给每个路由包了 `MissionShell`，**页面自己不要再包**。AchievementHall / ResearchLeague / ResearchMarketplace / ResearchProfile / TeacherGroups / TeacherOverview 这 6 个页面历史上自己又包了一层，导致**顶栏与侧边导航渲染两遍**（页面上出现两条一模一样的顶栏）；现已在 App.tsx 里改为直接 `element={<Xxx />}`。新页面照 Dashboard / GroupCommunicator / MyTeam 的写法：只返回页面内容。**看到"同一元素出现两次"先查这个。**
 - **"我的 / 本组的"指标必须按本组口径统计**：Dashboard 的学习路径进度曾用全局数据（`projects.length > 0`、`coinTxs.length > 0` 之类）判断，结果任何一个小组做了项目、全校学生都显示同一个 45%。凡是呈现在学生个人视角的数字，都要先 `filter(x => x.groupId === groupId)`。同理 `/profile` 的能力六维图不要加写死的基线分（曾被加成"零活动也有 60/40/40/45/50/45"的假能力值）。
-- **后端测试共 76 个用例**，`pytest tests/ -q` 约 2 秒跑完，改完随手跑一次很划算。
+- **后端测试共 103 个用例**，`pytest tests/ -q` 约 2 秒跑完，改完随手跑一次很划算。
 
 ## 部署
 

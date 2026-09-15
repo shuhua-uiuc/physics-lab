@@ -42,7 +42,7 @@
 - SQLAlchemy ORM + SQLite（`backend/physics_lab.db`）
 - 鉴权：python-jose（JWT，HS256，有效期 12h）+ bcrypt 密码哈希
 - 配置：pydantic-settings（`backend/.env` 或环境变量覆盖）
-- 测试：pytest（`backend/tests/`，90 个用例，6 个文件）
+- 测试：pytest（`backend/tests/`，103 个用例，7 个文件）
 
 ---
 
@@ -87,7 +87,7 @@ Physics_lab/
 │   │   ├── models.py            # 14 张表的 ORM 模型
 │   │   ├── schemas.py           # Pydantic 请求/响应模型（camelCase 序列化）
 │   │   └── routers/             # auth/admin/groups/theory/projects/coins（6 个）
-│   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/safety_assignments）
+│   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/quiz/safety_assignments）
 │   ├── requirements.txt / requirements-dev.txt
 │   └── physics_lab.db           # SQLite 数据文件
 ├── docs/DESIGN.md               # 本文档
@@ -217,7 +217,7 @@ cd backend
 | groupStore | localStorage + 后端 | classes、groups、users、rankings | joinGroup、updateGroupCoins、建组/分配/改名（经 API） |
 | projectStore | localStorage + 后端 | projects、recruitments、showcaseItems | createProject、**updateProject（PUT /api/projects/{id}）**、updateStatus、markProjectDone、createRecruitment、bidRecruitment、resolveRecruitment |
 | coinStore | localStorage + 后端 | coinTxs | addTx、transferCoins、settleChallenge/Recruit/Project（调后端端点） |
-| theoryStore | localStorage + 后端 | topics、questions、quizSessions、challenges | 测验/挑战作答与提交 |
+| theoryStore | localStorage + 后端 | topics、questions、quizSessions、challenges | 测验/挑战作答与提交。**测验会话按学生归属**：在线由 `POST /quiz/start` 建、bootstrap 按 `user_id` 拉回（**正序存**，因为「最近测验成绩」做的是 `reverse().slice(0,4)`），且在线时**不写 localStorage**（退出登录会清，避免共享电脑串号）；离线退回本地抽题。`startQuiz` 是 **async**（会话 id 由服务端下发） |
 | safetyStore | localStorage + 后端 | 安全题库 | 增删改、导入/导出/重置（经 `/api/safety/questions*` 落库，服务端权威；内置 35 题由 `backend/app/safety_builtin.py` 提供） |
 | questionBankStore | localStorage 键 `plab_review_questions` | ReviewableQuestion[] | submitQuestion（学生→pending）、uploadQuestion（教师→approved）、approveQuestion、rejectQuestion（须填理由）、editQuestion（标记 edited）、setFeedback、deleteQuestion、importTeacherQuestions |
 | uiStore | 不持久化 | toasts | pushToast/removeToast（5 秒自动消失，铃铛显示未读数） |
@@ -276,7 +276,8 @@ cd backend
 - `GET /rankings`、`GET /class-meta`
 
 **理论/挑战/展示**：
-- `GET /topics`、`GET /questions`、`POST /quiz/start`、`POST /quiz/{id}/answer`、`POST /quiz/{id}/grade`
+- `GET /topics`、`GET /questions`、`POST /quiz/start`、`POST /quiz/{id}/answer`、`POST /quiz/{id}/grade`、**`GET /quiz/sessions`（只返回当前用户自己的会话，按创建时间倒序；前端 bootstrap 拉取后转正序存）**
+- 测验会话的 `answer`/`grade` **校验归属**（`user_id != current.id` → 403）；`grade` 会置 `graded=true`（区分「开始过」与「已交卷」，学习路径前几步用它判定）
 - `GET/POST /challenges`、`GET /challenges/{id}/questions`、`POST /challenges/{id}/submit`
 - `GET/POST /showcase`、`POST /showcase/{id}/love`
 - `PUT /showcase/{id}`（学生改本组作品置回待审批；**教师/管理员改保留原状态**）、`DELETE /showcase/{id}`（教师/管理员下架，**已奖励的能量币不回滚**）、`POST /showcase/{id}/review`（教师审批，通过可带 coins 奖励）
@@ -299,7 +300,7 @@ cd backend
 ## 9. 后端测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q     # 90 个用例，约 2 秒
+cd backend && .venv/bin/python -m pytest tests/ -q     # 103 个用例，约 2 秒
 ```
 - `tests/test_auth.py`：注册/登录/鉴权
 - `tests/test_groups.py`：建组/加入/改名/分配
@@ -307,6 +308,7 @@ cd backend && .venv/bin/python -m pytest tests/ -q     # 90 个用例，约 2 �
 - `tests/test_projects.py`：创建、`PUT` 更新（部分字段保留、器材改类、跨组 403、教师可改、404/401）
 - `tests/test_safety_assignments.py`：指派可见性分流（含**无小组学生不得误匹配 `group_id IS NULL`** 的回归）、权限、及格由服务端推导防伪造
 - `tests/test_showcase.py`：教师编辑保留审批状态、学生编辑置回待审批、下架权限与「不回滚已奖励能量币」
+- `tests/test_quiz.py`：测验会话按学生隔离（他人查不到/改不了）、判分与「已交卷」标记
 
 **注意**：系统 Python 环境缺少 jose 等依赖，必须使用 `backend/.venv/bin/python`。
 
@@ -372,12 +374,27 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 | 项 | 现状 | 下一步 |
 |---|---|---|
 | 安全考核指派 | 已完成：教师端 `/teacher/safety` 建指派（类别/题数/限时/及格线/截止/目标班级或小组），学生面板按角色分流可见，考试页读 `?assignment=` 生效参数 | 未做：指派编辑（改则删重建）、服务端强制计时（现为客户端倒计时） |
+| 章节测验接待后端 | 已完成：当初「开始测验」跳的是编造的会话 id（`${topicId}-quiz`），测验页找不到就退化抽全局前 10 题、交卷报「评分会话不存在」且成绩不存；后端三个端点早已写好却从没被调用。现已接通，记录按学生存/取，学习路径前 5 步据此判定 | 未做：断线续答、按主题的错题本 |
+| 首页假数据清理 | 部分完成：删掉了写死的 4 条「今日任务」清单、把环的标签从「今日任务进度」改为「学习路径进度」、前 5 步改成真实信号 | 未做（见下方「其余已知假数据」） |
 | 题库审核多端共享 | questionBankStore 仅 localStorage + 种子数据 | 后端建 review_questions 表；学生提交→教师审核全链路持久化 |
 | 题目示意图 | 学生/教师提交题无 image 字段 | ReviewableQuestion 增加可选 imageUrl |
 | 冻结项目原因/冻结天数 | 后端 Project 无 freezeReason/frozenAt | 加字段与教师冻结操作端点 |
 | 超时招募自动结算 | 前端仅预警展示 | 加定时/管理员触发的自动 resolve 逻辑 |
 | 导出 CSV | 能量币趋势/招募状态/班级规模已实现（`downloadCSV`）；流水导出仍是 toast 占位（TeacherOverview.tsx:620） | 补齐流水 CSV 导出 |
 | 小组头像/学生头像 | 仅本地 avatar 字段 | 头像上传后端存储 |
+
+### 其余已知假数据（2026-09-15 全量审计，尚未修）
+
+一次全仓审计列出约 40 处「界面显示的不是真实状态」。上面的两行是已修的部分，以下是**尚未处理**的，按类型归类（改动时请逐条核实现状，别照抄）：
+
+- **学生个人面板上的写死数字**：`ResearchProfile` 整块升级进度（94% / 4700/5000 EXP / LV8）、学期目标 3/5、徽章分母 24 全是编的。`Login` 的「已完成 5/11」与统计条 22400/6/13。
+  *（Dashboard 那几处——能量面板 62% 进度条、教师名「杨静老师」、排行榜 `#0`、成就卡成员数、两处写死 toast、Lab News 第 4 条金额恒 +0——2026-09-15 已修）*
+- **KnowledgeGalaxy**：「已掌握 N」由 `(sIdx+cIdx+pIdx)%3!==2` 编造；「N 道关联题」编造；「9 大知识星系」实际只有 8 个；难度下拉是死控件。
+- **学习页 `LearningHub`**：`TOPIC_META` 的章数（12/15/10/9/11/10/8/7）与难度星级是写死的；参考答案/解析写死成库仑定律那套，点任何知识点都一样。
+- **项目/市场**：`ProjectCenter` 看板任务的负责人（张伟/李娜/…）、奖励、截止日全编，且预设 3 个任务为已完成；「6 颗项目行星」实际 10 个。`ResearchMarketplace` 投标进度 10/60/100 编造。
+- **成果馆/联赛**：`AchievementHall` 浏览量 = 点赞×2+60；「本月 Top3」其实是全时段排序；「本学期优秀作品 · N 人点赞」是拼出来的假教师署名；「大成果卡 ×5」但所有卡都被强制 1×1。`ResearchLeague`「赛季剩余 42 天」写死。
+- **教师端**：`TeacherOverview`「超过 3 天未解冻将自动扣除押金」功能不存在；「已向组长发送解冻提醒」只弹 toast；写死班名「闽西职业技术学院特色班」；「导出 CSV」只弹「即将上线」；「Top 20 流水」其实是「最新 20 条」。`StudentRoster` 写「默认密码 student123」，而生产实际是 `123456`（**会误导老师发错密码**）。
+- **种子数据**：`backend/app/seed.py` 的 `build_showcase` 写死 `loves = 8 + i*3`，生产库那两件作品的点赞数（8、11）就是这么来的，`loved_by` 是空的（没人点过）。
 
 ---
 
@@ -394,3 +411,7 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 9. **两个 challenge 路由别混淆**：`/theory/challenge`（无 s）渲染 `KnowledgeGalaxy`；`/theory/challenges`（带 s）渲染 `TheoryChallenge`（挑战大厅）。两者都在使用。改路由前读 `src/App.tsx`。
 10. **判断页面是否被使用别只看 `src/App.tsx`**：页面之间会互相引用（`ClassComposition.tsx` 由 `AdminConsole.tsx` 内嵌为 tab，不占路由）。删页面前全仓库 grep 组件名。
 11. **图片资源**：需要生成图片时使用内置 text_to_image API URL，不用占位图。
+12. **主题 id 只有一套**：`topic-N`（N 从 1 起，不补零）。`mockTopics.ts`、`LearningHub` 的 `TOPIC_META`、store 的 `topics`、后端 seed 必须一致——历史上前两者用 `topic-0N`、后两者用 `topic-N`，导致按主题抽题永远抽到 0 道。
+13. **测验会话属于个人**：`quizSessions` 在线时由后端按 `user_id` 返回、**正序**存（有消费方做 `reverse().slice(0,4)`），且**不写 localStorage**；退出登录时会清。别把它当成 org 级缓存用。
+14. **`startQuiz` 是 async**：会话 id 由服务端下发，调用方必须 `await` 后再跳转；离线/后端不可用时退回本地建会话（会带 `userId` 便于离线筛选）。
+15. **改已有的表要补迁移**：`create_all` 只建缺失的表、**不给已有表加列**。新增列必须写进 `database.py::_run_lightweight_migrations()`（不然线上库缺列，一读就炸）。

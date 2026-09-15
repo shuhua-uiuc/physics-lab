@@ -24,6 +24,7 @@ import { useTheoryStore } from '../store/theoryStore';
 import { useSafetyStore } from '../store/safetyStore';
 import { coinsApi } from './apiService';
 import { reviveDates } from './reviveDates';
+import type { QuizSession } from '../data/mockData';
 
 let loaded = false;
 let loadingPromise: Promise<void> | null = null;
@@ -50,19 +51,21 @@ export async function bootstrapFromApi(force = false): Promise<void> {
 
     // 单个接口失败（如过期 token、网络抖动）不再中断整批拉取；成功的部分照常注入，
     // 失败字段保持 store 原有数据，避免整页回退旧数据且无提示。
-    const [rGroups, rUsers, rTopics, rQuestions, rChallenges, rProjects, rRecruits, rShowcase, rCoinTxs, rClassMeta] =
-      await Promise.allSettled([
-        groupsApi.list(),
-        usersApi.list(),
-        theoryApi.topics(),
-        theoryApi.questions(),
-        theoryApi.challenges(),
-        projectsApi.list(),
-        recruitmentsApi.list(),
-        showcaseApi.list(),
-        coinsApi.transactions() as Promise<any[]>,
-        coinsApi.classMeta(),
-      ]);
+    const [
+      rGroups, rUsers, rTopics, rQuestions, rChallenges, rProjects, rRecruits, rShowcase, rCoinTxs, rClassMeta, rQuizSessions,
+    ] = await Promise.allSettled([
+      groupsApi.list(),
+      usersApi.list(),
+      theoryApi.topics(),
+      theoryApi.questions(),
+      theoryApi.challenges(),
+      projectsApi.list(),
+      recruitmentsApi.list(),
+      showcaseApi.list(),
+      coinsApi.transactions() as Promise<any[]>,
+      coinsApi.classMeta(),
+      theoryApi.quizSessions(),
+    ]);
 
     const groups = pick(rGroups);
     const users = pick(rUsers);
@@ -78,23 +81,35 @@ export async function bootstrapFromApi(force = false): Promise<void> {
     const topics = pick(rTopics);
     const questions = pick(rQuestions);
     const challenges = pick(rChallenges);
+    const quizSessions = pick(rQuizSessions);
 
     // 安全题与理论题共用 questions 表，必须在这里分流：
     //   - 带 safetyCategory 的 → safetyStore（安全考核用）
     //   - 其余 → theoryStore（理论题库）
-    // 分流是必须的：QuizPage 有几处兜底直接用 useTheoryStore.questions.slice(0,10)，
-    // 若安全题混进 theoryStore，理论测验可能抽到安全题。
+    // 分流是必须的：安全题本不该出现在理论测验的抽题池里。
     const safetyQuestions = questions ? questions.filter((q) => q.safetyCategory) : null;
     const theoryQuestions = questions ? questions.filter((q) => !q.safetyCategory) : null;
     if (safetyQuestions != null) {
       useSafetyStore.setState({ questions: safetyQuestions });
     }
 
-    if (topics != null || theoryQuestions != null || challenges != null) {
+    // 后端按创建时间倒序返回，这里翻成时间正序存——LearningHub 的「最近测验成绩」
+    // 做的是 reverse().slice(0,4)，倒序存会取到最旧的四条。
+    // 只保留本人的记录（后端已按 user_id 过滤）。
+    const orderedSessions =
+      quizSessions != null
+        ? reviveDates(quizSessions, ['createdAt']).sort(
+            (a: QuizSession, b: QuizSession) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          )
+        : null;
+
+    if (topics != null || theoryQuestions != null || challenges != null || orderedSessions != null) {
       useTheoryStore.setState({
         ...(topics != null ? { topics } : {}),
         ...(theoryQuestions != null ? { questions: theoryQuestions } : {}),
         ...(challenges != null ? { challenges: reviveDates(challenges, ['deadline']) } : {}),
+        ...(orderedSessions != null ? { quizSessions: orderedSessions } : {}),
       });
     }
 

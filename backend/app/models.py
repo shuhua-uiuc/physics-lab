@@ -119,6 +119,9 @@ class QuizSession(Base):
     score: Mapped[int] = mapped_column(Integer, default=0)
     passed: Mapped[bool] = mapped_column(Boolean, default=False)
     blind_points: Mapped[list] = mapped_column(JSON, default=list)
+    # 是否已交卷判分。前端学习路径要区分「开始过测验」与「已完成检测」，
+    # 靠 score 推断不可靠（全错也是 0 分），所以显式记一个标记。
+    graded: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

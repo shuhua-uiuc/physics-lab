@@ -215,6 +215,31 @@ def delete_safety_question(
 
 
 # ---------- Quiz ----------
+@router.get("/quiz/sessions", response_model=list[QuizSessionOut])
+def list_quiz_sessions(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """当前用户自己的答题会话（按创建时间倒序）。
+
+    只返回本人的记录——QuizSessionOut 里不含 user_id，不泄露他人信息。
+    前端 bootstrap 拉这个列表，学习路径的「学习/检测」几步据此判定。
+    """
+    return (
+        db.query(QuizSession)
+        .filter(QuizSession.user_id == current.id)
+        .order_by(QuizSession.created_at.desc())
+        .all()
+    )
+
+
+def _own_session(session_id: str, current: User, db: Session) -> QuizSession:
+    """取会话并校验归属。不校验的话，任何登录用户拿到 id 就能改别人的答卷与成绩。"""
+    session = db.get(QuizSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="答题会话不存在")
+    if session.user_id != current.id:
+        raise HTTPException(status_code=403, detail="无权操作他人的答题会话")
+    return session
+
+
 @router.post("/quiz/start", response_model=QuizSessionOut)
 def start_quiz(payload: QuizStartRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     topic_questions = db.query(Question).filter(Question.topic_id == payload.topicId).all()
@@ -259,11 +284,9 @@ def submit_answer(
     session_id: str,
     payload: QuizAnswerRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
 ):
-    session = db.get(QuizSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="答题会话不存在")
+    session = _own_session(session_id, current, db)
     answers = dict(session.user_answers)
     answers[payload.qid] = payload.answer
     session.user_answers = answers
@@ -273,10 +296,8 @@ def submit_answer(
 
 
 @router.post("/quiz/{session_id}/grade", response_model=QuizSessionOut)
-def grade_quiz(session_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    session = db.get(QuizSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="答题会话不存在")
+def grade_quiz(session_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    session = _own_session(session_id, current, db)
     correct = 0
     blind: set[str] = set()
     for q in session.questions:
@@ -289,6 +310,7 @@ def grade_quiz(session_id: str, db: Session = Depends(get_db), _: User = Depends
     session.score = round(correct / total * 100)
     session.passed = session.score >= 80
     session.blind_points = list(blind)
+    session.graded = True
     db.commit()
     db.refresh(session)
     return session

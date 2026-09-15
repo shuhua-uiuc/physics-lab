@@ -69,6 +69,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       // 未带 token 的 401（如登录/注册密码错误）不触发，避免误判为会话过期。
       setToken(null);
       localStorage.removeItem(LS_KEYS.CURRENT_USER);
+      // 个人数据也一并清掉。这里不调 sessionCleanup——那会形成
+      // apiClient → sessionCleanup → store → apiClient 的循环依赖；
+      // 而且下面做的是整页跳转，store 会重建，清 LS 就够了。
+      try {
+        localStorage.removeItem(LS_KEYS.QUIZ_SESSIONS);
+      } catch {
+        /* localStorage 不可用时忽略 */
+      }
       if (typeof window !== 'undefined') window.location.href = '/login';
     }
     const detail = (data && (data.detail || data.message)) || res.statusText;

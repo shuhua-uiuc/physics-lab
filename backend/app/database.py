@@ -82,3 +82,13 @@ def _run_lightweight_migrations() -> None:
                 conn.execute(
                     text("CREATE INDEX IF NOT EXISTS ix_safety_records_assignment_id ON safety_records (assignment_id)")
                 )
+
+    # 测验会话是否已交卷判分。存量记录按 score 推断：判过分的才可能有分数或盲点。
+    if "quiz_sessions" in inspector.get_table_names():
+        qs_columns = {col["name"] for col in inspector.get_columns("quiz_sessions")}
+        if "graded" not in qs_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE quiz_sessions ADD COLUMN graded BOOLEAN DEFAULT 0"))
+                conn.execute(
+                    text("UPDATE quiz_sessions SET graded = 1 WHERE score > 0 OR blind_points NOT IN ('[]', '')")
+                )

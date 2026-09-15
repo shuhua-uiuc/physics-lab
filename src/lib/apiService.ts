@@ -108,6 +108,8 @@ export const theoryApi = {
     api.post<QuizSession>(`/api/quiz/${sessionId}/answer`, { qid, answer }),
   gradeQuiz: (sessionId: string) => api.post<QuizSession>(`/api/quiz/${sessionId}/grade`),
   challenges: () => api.get<Challenge[]>('/api/challenges'),
+  /** 当前用户自己的答题会话（后端按 user_id 过滤，倒序返回） */
+  quizSessions: () => api.get<QuizSession[]>('/api/quiz/sessions'),
   createChallenge: (payload: {
     title: string;
     topicId: string;

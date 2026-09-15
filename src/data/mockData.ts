@@ -78,12 +78,16 @@ export interface ReviewableQuestion extends Question {
 
 export interface QuizSession {
   id: string;
+  /** 归属学生。在线时由后端写入；离线本地建的会话会打上当前用户，便于按人筛选 */
+  userId?: string | null;
   topicId: string;
   questions: Question[];
   userAnswers: Record<string, any>;
   score: number;
   passed: boolean;
   blindPoints: string[];
+  /** 是否已交卷判分（区分「开始过测验」与「已完成检测」） */
+  graded?: boolean;
   createdAt: Date;
 }
 

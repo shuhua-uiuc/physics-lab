@@ -3,7 +3,7 @@ import type { PhysicsTopic } from '../types';
 // 8个高中物理主题数据，严格按id/title/outline/aiMaterial结构组织
 export const mockTopics: PhysicsTopic[] = [
   {
-    id: 'topic-01',
+    id: 'topic-1',
     title: '力学',
     outline: [
       {
@@ -38,7 +38,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 平抛运动中，速度偏转角的正切值为何总是位移偏转角正切值的2倍？请推导证明。`,
   },
   {
-    id: 'topic-02',
+    id: 'topic-2',
     title: '电磁学',
     outline: [
       {
@@ -73,7 +73,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 电磁感应中，感应电流的效果为何总是"阻碍"引起感应的原因？这与能量守恒有何联系？`,
   },
   {
-    id: 'topic-03',
+    id: 'topic-3',
     title: '光学',
     outline: [
       {
@@ -107,7 +107,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 日常生活中为何容易观察到声波衍射却难以观察到光波衍射？对比两者波长量级分析。`,
   },
   {
-    id: 'topic-04',
+    id: 'topic-4',
     title: '热学',
     outline: [
       {
@@ -142,7 +142,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 既然永动机不可能制成，为什么地球生命系统却能维持高度有序？结合开放系统与熵流分析。`,
   },
   {
-    id: 'topic-05',
+    id: 'topic-5',
     title: '原子物理',
     outline: [
       {
@@ -177,7 +177,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 为什么α粒子在云室中径迹粗而直，β粒子径迹细而弯？结合电离能力与质量比较分析。`,
   },
   {
-    id: 'topic-06',
+    id: 'topic-6',
     title: '波动',
     outline: [
       {
@@ -212,7 +212,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 地震波中的P波（纵波）和S波（横波）速度不同，如何利用这一差异估算震中距离？`,
   },
   {
-    id: 'topic-07',
+    id: 'topic-7',
     title: '相对论初步',
     outline: [
       {
@@ -247,7 +247,7 @@ export const mockTopics: PhysicsTopic[] = [
 3. 爱因斯坦说"引力不是力"，该如何理解？用床垫-小球比喻解释时空弯曲如何产生行星轨道。`,
   },
   {
-    id: 'topic-08',
+    id: 'topic-8',
     title: '实验误差分析',
     outline: [
       {

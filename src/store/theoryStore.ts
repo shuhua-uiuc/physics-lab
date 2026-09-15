@@ -11,9 +11,11 @@ import {
 } from '../data/mockData';
 import { useCoinStore } from './coinStore';
 import { useGroupStore } from './groupStore';
+import { useUIStore } from './uiStore';
 import { theoryApi, groupsApi, usersApi, coinsApi } from '../lib/apiService';
 import { syncToApi } from '../lib/syncQueue';
 import { reviveDates } from '../lib/reviveDates';
+import { apiEnabled } from '../lib/apiClient';
 
 /**
  * 结算/挑战写操作后，后端已改动小组余额与交易流水，也可能新增/更新挑战。
@@ -36,7 +38,11 @@ interface TheoryState {
   questions: Question[];
   quizSessions: QuizSession[];
   challenges: Challenge[];
-  startQuiz: (topicId: string) => QuizSession;
+  /**
+   * 开始一次测验。在线时由后端建会话（异步）；离线或后端不可用时退回本地抽题。
+   * userId 由调用方传入（本地兜底时用来给会话打归属），避免 store 之间互相 import 成环。
+   */
+  startQuiz: (topicId: string, userId?: string | null) => Promise<QuizSession>;
   submitAnswer: (sessionId: string, qid: string, answer: any) => void;
   gradeQuiz: (sessionId: string) => QuizSession;
   createChallenge: (params: {
@@ -85,7 +91,9 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
   ) => {
     saveLS(LS_KEYS.TOPICS, topics);
     saveLS(LS_KEYS.QUESTIONS, questions);
-    saveLS(LS_KEYS.QUIZ_SESSIONS, quizSessions);
+    // 在线时测验记录以后端为准（登录/刷新由 bootstrap 拉回），刻意不写本地：
+    // 既避免与服务端漂移，也防止共享电脑上换人登录读到上一个人的记录。
+    if (!apiEnabled) saveLS(LS_KEYS.QUIZ_SESSIONS, quizSessions);
     saveLS(LS_KEYS.CHALLENGES, challenges);
   };
 
@@ -99,12 +107,31 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
       return get().questions.filter((q) => q.topicId === topicId);
     },
 
-    // 测验属于本地评估会话：题库已在登录时 bootstrap 到本地，
-    // 选题、答题、判分均在前端完成（返回值需同步供页面立即使用）。
-    // 后端只在“挑战结算”环节参与正式记账，普通自测不落库。
-    startQuiz: (topicId) => {
+    // 在线时由后端建会话：成绩可追溯、换设备也在、能按学生归属。
+    // 离线（未配后端）或后端不可用时退回本地抽题，保证学生至少能测完。
+    // 本地建的会话会打上当前用户，便于离线时按人筛选。
+    startQuiz: async (topicId, userId) => {
       const { questions, quizSessions, topics, challenges } = get();
+
+      let remoteFailed = false;
+      if (apiEnabled) {
+        try {
+          const remote = await theoryApi.startQuiz(topicId);
+          const session = reviveDates([remote], ['createdAt'])[0] as QuizSession;
+          const next = [...quizSessions, session];
+          persist(topics, questions, next, challenges);
+          set({ quizSessions: next });
+          return session;
+        } catch {
+          remoteFailed = true;
+        }
+      }
+
       const topicQuestions = questions.filter((q) => q.topicId === topicId);
+      if (topicQuestions.length === 0) {
+        throw new Error('该主题暂无题目');
+      }
+
       const kpMap: Record<string, Question[]> = {};
       topicQuestions.forEach((q) => {
         if (!kpMap[q.knowledgePoint]) kpMap[q.knowledgePoint] = [];
@@ -123,20 +150,24 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
         const remain = topicQuestions.filter((q) => !picked.includes(q));
         picked.push(remain[Math.floor(Math.random() * remain.length)]);
       }
-      const finalQuestions = picked.slice(0, 10);
       const session: QuizSession = {
         id: `qs_${uid()}`,
+        userId: userId ?? null,
         topicId,
-        questions: finalQuestions,
+        questions: picked.slice(0, 10),
         userAnswers: {},
         score: 0,
         passed: false,
         blindPoints: [],
+        graded: false,
         createdAt: new Date(),
       };
       const next = [...quizSessions, session];
       persist(topics, questions, next, challenges);
       set({ quizSessions: next });
+      if (remoteFailed) {
+        useUIStore.getState().pushToast('后端暂不可用，已进入离线测验模式', 'warning');
+      }
       return session;
     },
 
@@ -153,7 +184,7 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
 
     gradeQuiz: (sessionId) => {
       const { quizSessions, topics, questions, challenges } = get();
-      let graded: QuizSession | null = null;
+      let gradedSession: QuizSession | null = null;
       const next = quizSessions.map((s) => {
         if (s.id !== sessionId) return s;
         let correct = 0;
@@ -168,17 +199,18 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
         });
         const total = s.questions.length || 1;
         const score = Math.round((correct / total) * 100);
-        graded = {
+        gradedSession = {
           ...s,
           score,
           passed: score >= 80,
           blindPoints: Array.from(blindSet),
+          graded: true,
         };
-        return graded;
+        return gradedSession;
       });
       persist(topics, questions, next, challenges);
       set({ quizSessions: next });
-      return graded!;
+      return gradedSession!;
     },
 
     createChallenge: ({ title, creatorGroupId, topicId, questionIds, reward, deadline }) => {

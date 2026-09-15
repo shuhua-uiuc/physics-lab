@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheoryStore } from '@/store/theoryStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -11,6 +11,9 @@ import {
   XCircle, AlertTriangle, Brain, RotateCcw, Trophy, Sparkles, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { theoryApi } from '@/lib/apiService';
+import { syncToApi } from '@/lib/syncQueue';
+import { apiEnabled } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 export interface QuizPageProps {
@@ -77,6 +80,11 @@ export default function QuizPage(props: QuizPageProps) {
   const [topicTitle, setTopicTitle] = useState('');
   const [challengeTitle, setChallengeTitle] = useState('');
   const [reward, setReward] = useState(0);
+  const [loadError, setLoadError] = useState('');
+  /** 已初始化的会话 id。deps 里带上了 quizSessions（刷新后 bootstrap 才把会话拉回来，
+   *  需要重跑一次），用这个 ref 保证每个会话只灌一次题目/答案，不被后续更新反复覆盖。 */
+  const loadedSessionRef = useRef<string | null>(null);
+  const quizSessions = useTheoryStore((s) => s.quizSessions);
 
   useEffect(() => {
     if (mode === 'quiz') {
@@ -84,25 +92,24 @@ export default function QuizPage(props: QuizPageProps) {
         ? useTheoryStore.getState().quizSessions.find((s) => s.id === sessionId)
         : undefined;
       if (session) {
-        setQuestions(session.questions);
-        setAnswers(session.userAnswers || {});
-        const topic = getTopicById(session.topicId);
-        setTopicTitle(topic?.title || '未知主题');
-      } else {
-        const sessions = useTheoryStore.getState().quizSessions;
-        if (sessions.length > 0) {
-          const s = sessions[sessions.length - 1];
-          setQuestions(s.questions);
-          setAnswers(s.userAnswers || {});
-          const t = getTopicById(s.topicId);
-          setTopicTitle(t?.title || '');
-        } else {
-          const allQs = useTheoryStore.getState().questions.slice(0, 10);
-          setQuestions(allQs);
-          setTopicTitle('综合练习');
+        // 只灌一次：deps 里的 quizSessions 每答一题都会变，不加这个判断会把
+        // 学生正在做的答案反复重置。
+        if (loadedSessionRef.current !== session.id) {
+          loadedSessionRef.current = session.id;
+          setQuestions(session.questions);
+          setAnswers(session.userAnswers || {});
+          const topic = getTopicById(session.topicId);
+          setTopicTitle(topic?.title || '未知主题');
         }
+        setLoadError('');
+        return;
       }
-    } else {
+      // 找不到就明确报错。原先会退化成「取最后一条会话」或「抽全局前 10 题」，
+      // 正是这两个兜底把坏掉的测验盖住了——学生考完才发现成绩没存上。
+      setLoadError('测验不存在或已过期，请回学习中心重新开始。');
+      return;
+    }
+    if (mode === 'challenge') {
       if (challengeId) {
         const challenge = getChallengeById(challengeId);
         if (challenge) {
@@ -130,7 +137,7 @@ export default function QuizPage(props: QuizPageProps) {
         setChallengeTitle('示例挑战');
       }
     }
-  }, [mode, sessionId, challengeId]);
+  }, [mode, sessionId, challengeId, quizSessions]);
 
   const answeredCount = Object.keys(answers).length;
 
@@ -189,6 +196,18 @@ export default function QuizPage(props: QuizPageProps) {
               : `检测未通过，得分 ${graded.score} 分，请继续学习`,
             passed ? 'success' : 'warning'
           );
+          // 落库：把答案整体回传后再判分。必须放在同一个有序任务里——syncToApi 的任务
+          // 之间不保证顺序，逐题 fire-and-forget 会让判分抢在最后一条答案之前，把分数算低。
+          if (apiEnabled) {
+            syncToApi(async () => {
+              for (const q of questions) {
+                if (answers[q.id] !== undefined) {
+                  await theoryApi.submitAnswer(sessionId, q.id, answers[q.id]);
+                }
+              }
+              await theoryApi.gradeQuiz(sessionId);
+            }, 'quiz.grade');
+          }
         }
       }
     } else {
@@ -221,6 +240,17 @@ export default function QuizPage(props: QuizPageProps) {
   };
 
   if (questions.length === 0) {
+    if (loadError) {
+      return (
+        <div className="container mx-auto py-16 text-center">
+          <AlertTriangle size={48} className="mx-auto text-danger-400 mb-4" />
+          <p className="text-ink-700 font-semibold mb-2">{loadError}</p>
+          <button className="btn-outline mt-2" onClick={() => navigate('/theory/topics')}>
+            返回学习中心
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="container mx-auto py-16 text-center">
         <Brain size={48} className="mx-auto text-ink-400 mb-4" />

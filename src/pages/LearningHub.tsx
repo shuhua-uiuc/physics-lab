@@ -16,7 +16,6 @@ import {
   Sparkles,
   PlayCircle,
   Trophy,
-  Clock,
   Target,
   Lightbulb,
   Brain,
@@ -28,6 +27,7 @@ import {
 } from 'lucide-react';
 import ProgressRing from '@/components/ui/ProgressRing';
 import { useTheoryStore } from '@/store/theoryStore';
+import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { mockTopics } from '@/data/mockTopics';
 import { cn } from '@/lib/utils';
@@ -45,14 +45,14 @@ interface TopicMeta {
 }
 
 const TOPIC_META: TopicMeta[] = [
-  { id: 'topic-01', title: '力学', icon: Atom, chapters: 12, difficulty: 1, completed: true, unlocked: true },
-  { id: 'topic-02', title: '电磁学', icon: Zap, chapters: 15, difficulty: 2, completed: false, unlocked: true },
-  { id: 'topic-03', title: '光学', icon: Eye, chapters: 10, difficulty: 2, completed: true, unlocked: true },
-  { id: 'topic-04', title: '热学', icon: ThermometerSun, chapters: 9, difficulty: 1, completed: true, unlocked: true },
-  { id: 'topic-05', title: '原子物理', icon: RadioTower, chapters: 11, difficulty: 3, completed: false, unlocked: true },
-  { id: 'topic-06', title: '波动', icon: Waves, chapters: 10, difficulty: 2, completed: false, unlocked: true },
-  { id: 'topic-07', title: '相对论', icon: Rocket, chapters: 8, difficulty: 3, completed: false, unlocked: false },
-  { id: 'topic-08', title: '误差分析', icon: Scale, chapters: 7, difficulty: 2, completed: false, unlocked: false },
+  { id: 'topic-1', title: '力学', icon: Atom, chapters: 12, difficulty: 1, completed: true, unlocked: true },
+  { id: 'topic-2', title: '电磁学', icon: Zap, chapters: 15, difficulty: 2, completed: false, unlocked: true },
+  { id: 'topic-3', title: '光学', icon: Eye, chapters: 10, difficulty: 2, completed: true, unlocked: true },
+  { id: 'topic-4', title: '热学', icon: ThermometerSun, chapters: 9, difficulty: 1, completed: true, unlocked: true },
+  { id: 'topic-5', title: '原子物理', icon: RadioTower, chapters: 11, difficulty: 3, completed: false, unlocked: true },
+  { id: 'topic-6', title: '波动', icon: Waves, chapters: 10, difficulty: 2, completed: false, unlocked: true },
+  { id: 'topic-7', title: '相对论', icon: Rocket, chapters: 8, difficulty: 3, completed: false, unlocked: false },
+  { id: 'topic-8', title: '误差分析', icon: Scale, chapters: 7, difficulty: 2, completed: false, unlocked: false },
 ];
 
 const QUIZ_HISTORY = [
@@ -62,7 +62,7 @@ const QUIZ_HISTORY = [
 ];
 
 export default function LearningHub() {
-  const [activeTopicId, setActiveTopicId] = useState('topic-02');
+  const [activeTopicId, setActiveTopicId] = useState('topic-2');
   const [activeTab, setActiveTab] = useState<TopicTab>('ai-study');
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
@@ -71,7 +71,8 @@ export default function LearningHub() {
 
   const navigate = useNavigate();
   const pushToast = useUIStore((s) => s.pushToast);
-  const { quizSessions } = useTheoryStore();
+  const { quizSessions, startQuiz } = useTheoryStore();
+  const userId = useAuthStore((s) => s.userId);
 
   // 完成/解锁：从真实测验派生（某主题有通过记录即完成；主题按顺序解锁）
   const completedTopicIds = useMemo(() => new Set(quizSessions.filter((s) => s.passed).map((s) => s.topicId)), [quizSessions]);
@@ -103,6 +104,22 @@ export default function LearningHub() {
   const unlockedCount = topicMeta.filter((t) => t.unlocked).length;
   const completedCount = topicMeta.filter((t) => t.completed).length;
   const totalProgress = Math.round((completedCount / topicMeta.length) * 100);
+
+  const [startingQuiz, setStartingQuiz] = useState(false);
+
+  /** 建一条真实测验会话再跳转。之前是跳 `${topicId}-quiz` 这个编造的 id，
+   *  测验页找不到它就退化成「抽全局前 10 题」，交卷时还报「会话不存在」。 */
+  const handleStartQuiz = async () => {
+    if (startingQuiz) return;
+    setStartingQuiz(true);
+    try {
+      const session = await startQuiz(activeTopicId, userId);
+      navigate(`/theory/quiz/${session.id}`);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : '无法开始测验，请稍后再试', 'error');
+      setStartingQuiz(false);
+    }
+  };
 
   return (
     <div className="w-full space-y-6">
@@ -463,25 +480,27 @@ export default function LearningHub() {
                 <div className="relative text-center py-6">
                   <div className="inline-block relative mb-6">
                       <div className="absolute inset-0 rounded-3xl bg-energy-400/30 blur-xl animate-pulse" />
-                      <button className="btn-energy relative !py-6 !px-10 !text-xl !rounded-2xl shadow-glowEnergy" onClick={() => { pushToast(`开始《${activeTopicData.title}》知识挑战 · 限时20分钟`, 'info'); setTimeout(() => navigate(`/theory/quiz/${activeTopicId}-quiz`), 100); }}>
+                      <button
+                        className="btn-energy relative !py-6 !px-10 !text-xl !rounded-2xl shadow-glowEnergy disabled:opacity-60"
+                        onClick={handleStartQuiz}
+                        disabled={startingQuiz}
+                      >
                         <Zap size={24} className="fill-white/30" />
-                        START TEST · 开始测验
+                        {startingQuiz ? '正在准备测验…' : 'START TEST · 开始测验'}
                       </button>
                     </div>
                   <h3 className="text-2xl font-black text-ink-800 mb-2">
                     「{activeTopicData.title}」知识挑战
                   </h3>
                   <p className="text-ink-600 font-medium mb-6">
-                    10 道精选题目 · 80 分通关 · 最高 200⚡ 能量奖励
+                    10 道精选题目 · 80 分通关
                   </p>
                   <div className="flex items-center justify-center gap-4">
-                    <div className="glass-card !py-3 !px-5 rounded-xl flex items-center gap-2">
-                      <Clock size={16} className="text-mission-500" />
-                      <span className="text-sm font-bold text-ink-700">限时 20 分钟</span>
-                    </div>
+                    {/* 原先这里还有一个「限时 20 分钟」的芯片——测验页根本没有计时器，
+                        是句空头承诺，已去掉。 */}
                     <div className="glass-card !py-3 !px-5 rounded-xl flex items-center gap-2">
                       <Target size={16} className="text-growth-500" />
-                      <span className="text-sm font-bold text-ink-700">通过率 {avgAccuracy}%</span>
+                      <span className="text-sm font-bold text-ink-700">平均分 {avgAccuracy}%</span>
                     </div>
                   </div>
                 </div>

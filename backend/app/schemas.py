@@ -298,6 +298,7 @@ class QuizSessionOut(CamelModel):
     score: int
     passed: bool
     blind_points: list[str]
+    graded: bool = False
     created_at: datetime
 
 
