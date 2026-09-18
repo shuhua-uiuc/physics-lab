@@ -102,6 +102,8 @@ export interface LoginResult {
   classId: string | null;
   groupId: string | null;
   name: string;
+  /** 该学生是否还在用统一初始密码（教师/管理员恒为 false）。用于首页提示改密。 */
+  isDefaultPassword?: boolean;
 }
 
 // ---------- 认证 ----------

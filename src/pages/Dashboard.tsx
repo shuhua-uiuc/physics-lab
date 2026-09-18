@@ -6,6 +6,7 @@ import { useGroupStore } from '../store/groupStore';
 import { useTheoryStore } from '../store/theoryStore';
 import { useProjectStore } from '../store/projectStore';
 import { useCoinStore } from '../store/coinStore';
+import ChangePasswordModal from '../components/ui/ChangePasswordModal';
 import {
   Rocket,
   Brain,
@@ -164,6 +165,30 @@ export default function Dashboard() {
   const pushToast = useUIStore((s) => s.pushToast);
   const { userId, role, groupId, classId } = useAuthStore();
   const authName = useAuthStore((s) => s.name);
+  const isDefaultPassword = useAuthStore((s) => s.isDefaultPassword);
+
+  // 「还在用初始密码」提示：按用户记住「知道了」，不反复打扰。
+  // 改过密码后 isDefaultPassword 变 false，提示自然消失。
+  const pwdHintKey = `plab_pwd_hint_dismissed_${userId ?? 'anon'}`;
+  const [pwdHintDismissed, setPwdHintDismissed] = useState(false);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      setPwdHintDismissed(localStorage.getItem(pwdHintKey) === '1');
+    } catch {
+      /* localStorage 不可用时忽略 */
+    }
+  }, [userId, pwdHintKey]);
+  const dismissPwdHint = () => {
+    setPwdHintDismissed(true);
+    try {
+      localStorage.setItem(pwdHintKey, '1');
+    } catch {
+      /* ignore */
+    }
+  };
+  const showPwdHint = role === 'student' && Boolean(isDefaultPassword) && !pwdHintDismissed;
   const setGroupId = useAuthStore((s) => s.setGroupId);
   const getUserById = useGroupStore((s) => s.getUserById);
   const groups = useGroupStore((s) => s.groups);
@@ -637,6 +662,32 @@ export default function Dashboard() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ============ 初始密码提示（仅还在用初始密码的学生可见） ============ */}
+      {showPwdHint && (
+        <section className="rounded-[28px] p-5 relative overflow-hidden bg-gradient-to-br from-alert-50/90 via-white/95 to-energy-50/70 border-2 border-alert-200/70">
+          <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-gradient-to-br from-alert-400/15 to-transparent blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-alert-400 to-energy-500 flex items-center justify-center text-white shadow-lg shrink-0">
+              <Lock size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-extrabold text-ink-900">你还在使用初始密码</div>
+              <p className="text-[12.5px] text-ink-600 font-medium mt-0.5 leading-relaxed">
+                初始密码是全班统一的，同学只要知道你的姓名就可能登进来。建议现在换成只有你自己知道的密码。
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button className="btn-mission !py-2 !px-4 !text-[13px]" onClick={() => setChangePwdOpen(true)}>
+                修改密码
+              </button>
+              <button className="btn-ghost !py-2 !px-3 !text-[13px]" onClick={dismissPwdHint}>
+                知道了
+              </button>
             </div>
           </div>
         </section>
@@ -1502,6 +1553,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)} />}
     </div>
   );
 }

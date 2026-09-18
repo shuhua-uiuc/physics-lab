@@ -36,6 +36,12 @@ export const classesApi = {
   uploadStudents: (classId: string, students: { name: string; username?: string; password?: string }[]) =>
     api.post<User[]>(`/api/classes/${classId}/students/batch`, { students }),
   deleteStudent: (userId: string) => api.delete<{ ok: boolean }>(`/api/students/${userId}`),
+  /**
+   * 教师把一个学生的密码重置为系统初始密码（学生忘记密码时的唯一出路）。
+   * 新密码由服务端从配置取，这里不传——返回值带上重置后的密码，方便老师转告学生。
+   */
+  resetStudentPassword: (userId: string) =>
+    api.post<{ ok: boolean; password: string }>(`/api/students/${userId}/password/reset`),
 };
 
 // ---------- Admin: Teacher management ----------

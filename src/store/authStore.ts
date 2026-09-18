@@ -17,6 +17,8 @@ interface AuthState extends CurrentUser {
   loginTeacher: () => void;
   /** 学生自助加入小组后，同步当前登录态的 groupId。 */
   setGroupId: (groupId: string | null) => void;
+  /** 本人改完密码后调用：清掉「还在用初始密码」标记，首页提示随之消失。 */
+  markPasswordChanged: () => void;
 
   // 后端模式（JWT）异步方法
   loginWithApi: (username: string, password: string) => Promise<CurrentUser & { name: string }>;
@@ -85,9 +87,25 @@ export const useAuthStore = create<AuthState>((set) => {
           groupId,
           role: state.role,
           name: state.name,
+          isDefaultPassword: state.isDefaultPassword,
         };
         persist(next);
         return { groupId };
+      });
+    },
+
+    markPasswordChanged: () => {
+      set((state) => {
+        const next = {
+          userId: state.userId,
+          classId: state.classId,
+          groupId: state.groupId,
+          role: state.role,
+          name: state.name,
+          isDefaultPassword: false,
+        };
+        persist(next);
+        return { isDefaultPassword: false };
       });
     },
 
@@ -101,6 +119,7 @@ export const useAuthStore = create<AuthState>((set) => {
           groupId: result.groupId,
           role: result.role as UserRole,
           name: result.name,
+          isDefaultPassword: Boolean(result.isDefaultPassword),
         };
         persist(next);
         set({ ...next, authLoading: false, authError: null });
@@ -141,7 +160,7 @@ export const useAuthStore = create<AuthState>((set) => {
         clearBusinessData();
         resetBootstrap(); // 下次登录重新拉一遍，别复用本轮的 loaded 标记
       }
-      const next = { userId: null, classId: null, groupId: null, role: null, name: null };
+      const next = { userId: null, classId: null, groupId: null, role: null, name: null, isDefaultPassword: false };
       persist(next);
       set({ ...next, authError: null });
     },

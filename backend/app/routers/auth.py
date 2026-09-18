@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Class, User
@@ -13,7 +14,7 @@ from ..services import gen_id
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _issue_token(user: User) -> TokenResponse:
+def _issue_token(user: User, is_default_password: bool = False) -> TokenResponse:
     token = create_access_token(subject=user.id, role=user.account_role)
     return TokenResponse(
         access_token=token,
@@ -22,6 +23,7 @@ def _issue_token(user: User) -> TokenResponse:
         class_id=user.class_id,
         group_id=user.group_id,
         name=user.name,
+        is_default_password=is_default_password,
     )
 
 
@@ -40,7 +42,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
     user = _find_user_by_identifier(db, payload.username)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名/邮箱或密码错误")
-    return _issue_token(user)
+    # 这里刚收到用户输入的明文密码，直接与初始密码比对即可，不必再验一次哈希。
+    # 前端据此提示「还在用初始密码，建议改掉」。
+    is_default = (
+        user.account_role == "student"
+        and bool(settings.student_default_password)
+        and payload.password == settings.student_default_password
+    )
+    return _issue_token(user, is_default_password=is_default)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)

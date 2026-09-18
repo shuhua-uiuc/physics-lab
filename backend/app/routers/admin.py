@@ -222,6 +222,35 @@ def delete_student(
     return {"ok": True}
 
 
+@router.post("/students/{user_id}/password/reset")
+def reset_student_password(
+    user_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """教师重置学生密码（学生忘记密码时的唯一出路）。
+
+    新密码由服务端取 `settings.student_default_password`，**不下发给前端去拼**——
+    默认密码只存在于服务端配置里。返回值带上重置后的密码，方便老师当场转告学生
+    （走的是已鉴权接口，且这本来就是老师要告诉学生的东西）。
+    """
+    from ..config import settings
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    if user.account_role != "student":
+        raise HTTPException(status_code=400, detail="只能重置学生账号的密码")
+
+    default_password = settings.student_default_password
+    if not default_password:
+        raise HTTPException(status_code=500, detail="未配置学生初始密码，无法重置")
+
+    user.password_hash = hash_password(default_password)
+    db.commit()
+    return {"ok": True, "password": default_password}
+
+
 # ---------- 教师账号管理 ----------
 @router.get("/teachers", response_model=list[TeacherOut])
 def list_teachers(

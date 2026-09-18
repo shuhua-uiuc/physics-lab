@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Zap,
   RotateCcw,
+  KeyRound,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -74,6 +75,7 @@ export default function StudentRoster() {
 
   // 删除学生
   const [deleteStudentId, setDeleteStudentId] = useState<{ id: string; name: string } | null>(null);
+  const [resetPwdStudent, setResetPwdStudent] = useState<{ id: string; name: string } | null>(null);
 
   // 批量选择
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -184,6 +186,19 @@ export default function StudentRoster() {
       pushToast(`已删除学生「${deleteStudentId.name}」`, 'success');
     } catch (err: any) {
       pushToast(err?.message || '删除失败', 'error');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwdStudent) return;
+    const target = resetPwdStudent;
+    try {
+      const res = await classesApi.resetStudentPassword(target.id);
+      setResetPwdStudent(null);
+      // 把重置后的密码直接显给老师，方便当场念给学生（密码由服务端配置决定）
+      pushToast(`已把「${target.name}」的密码重置为 ${res.password}`, 'success');
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : '重置失败，请重试', 'error');
     }
   };
 
@@ -404,6 +419,14 @@ export default function StudentRoster() {
                               清零累计
                             </button>
                             <button
+                              onClick={() => setResetPwdStudent({ id: s.id, name: s.name })}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold text-ink-500 hover:text-mission-600 hover:bg-mission-50 transition inline-flex items-center gap-1"
+                              title="把该学生的密码重置为系统初始密码（学生忘记密码时用）"
+                            >
+                              <KeyRound size={12} />
+                              重置密码
+                            </button>
+                            <button
                               onClick={() => setDeleteStudentId({ id: s.id, name: s.name })}
                               className="w-7 h-7 rounded-lg hover:bg-danger-50 flex items-center justify-center text-ink-400 hover:text-danger-600 transition opacity-0 group-hover:opacity-100 inline-flex"
                               title="删除"
@@ -460,7 +483,7 @@ export default function StudentRoster() {
           />
           <div className="flex items-center gap-2 text-[12px] text-ink-400">
             <CheckCircle2 size={14} className="text-growth-500" />
-            未提供用户名/密码时将自动生成，默认密码 student123
+            未提供用户名/密码时将自动生成，密码使用系统初始密码（见登录页说明）
           </div>
         </div>
         <div className="flex gap-2 mt-4">
@@ -485,6 +508,16 @@ export default function StudentRoster() {
         message={`确定删除学生「${deleteStudentId?.name}」吗？此操作不可撤销，该学生将无法登录。`}
         confirmText="确认删除"
         danger
+      />
+
+      {/* 重置密码确认 */}
+      <ConfirmModal
+        open={!!resetPwdStudent}
+        onClose={() => setResetPwdStudent(null)}
+        onConfirm={handleResetPassword}
+        title="重置密码"
+        message={`把「${resetPwdStudent?.name}」的密码重置为系统初始密码？\n重置后请把新密码告诉他，并让他登录后自行修改。`}
+        confirmText="确认重置"
       />
 
       {/* 批量删除确认 */}

@@ -40,8 +40,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTheoryStore } from '@/store/theoryStore';
 import { useQuestionBankStore } from '@/store/questionBankStore';
-import { useUIStore } from '@/store/uiStore';
-import { authApi, safetyApi, SafetyRecord } from '@/lib/apiService';
+import ChangePasswordModal from '@/components/ui/ChangePasswordModal';
+import { safetyApi, SafetyRecord } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
 
 function useTicker(target: number, duration = 900) {
@@ -161,42 +161,7 @@ export default function ResearchProfile() {
   );
   const doneCount = Object.values(goals).filter(Boolean).length;
 
-  const pushToast = useUIStore((s) => s.pushToast);
   const [pwdOpen, setPwdOpen] = useState(false);
-  const [oldPwd, setOldPwd] = useState('');
-  const [newPwd, setNewPwd] = useState('');
-  const [confirmPwd, setConfirmPwd] = useState('');
-  const [pwdErr, setPwdErr] = useState('');
-  const [changingPwd, setChangingPwd] = useState(false);
-
-  const handleChangePassword = async () => {
-    if (!oldPwd || !newPwd) {
-      setPwdErr('请填写原密码与新密码');
-      return;
-    }
-    if (newPwd.length < 6) {
-      setPwdErr('新密码至少 6 位');
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      setPwdErr('两次输入的新密码不一致');
-      return;
-    }
-    setPwdErr('');
-    setChangingPwd(true);
-    try {
-      await authApi.changePassword(oldPwd, newPwd);
-      pushToast('密码已修改，下次请用新密码登录', 'success');
-      setPwdOpen(false);
-      setOldPwd('');
-      setNewPwd('');
-      setConfirmPwd('');
-    } catch (err: any) {
-      setPwdErr(err?.message || '修改失败，请重试');
-    } finally {
-      setChangingPwd(false);
-    }
-  };
 
   const timelineCfg: Record<TimelineEvent['type'], { grad: string; chip: string; icon: any }> = {
     challenge: { grad: 'from-nova-400 to-mission-500', chip: 'chip-nova', icon: Swords },
@@ -581,59 +546,7 @@ export default function ResearchProfile() {
           </div>
         </div>
       </div>
-      {pwdOpen && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4"
-          onClick={() => setPwdOpen(false)}
-        >
-          <div
-            className="glass-card w-full max-w-sm p-6 rounded-[24px] shadow-soft relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="font-extrabold text-ink-800 text-[18px] mb-1 flex items-center gap-2">
-              <Lock size={18} className="text-mission-500" />
-              修改密码
-            </h3>
-            <p className="text-[12px] text-ink-500 mb-4">修改后请用新密码登录</p>
-            <div className="space-y-3">
-              <input
-                type="password"
-                placeholder="原密码"
-                className="input"
-                value={oldPwd}
-                onChange={(e) => setOldPwd(e.target.value)}
-              />
-              <input
-                type="password"
-                placeholder="新密码（至少 6 位）"
-                className="input"
-                value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)}
-              />
-              <input
-                type="password"
-                placeholder="确认新密码"
-                className="input"
-                value={confirmPwd}
-                onChange={(e) => setConfirmPwd(e.target.value)}
-              />
-              {pwdErr && <p className="text-[12px] text-danger-600">{pwdErr}</p>}
-            </div>
-            <div className="flex gap-2 mt-5">
-              <button className="btn-ghost flex-1" onClick={() => setPwdOpen(false)}>
-                取消
-              </button>
-              <button
-                className="btn-mission flex-1"
-                onClick={handleChangePassword}
-                disabled={changingPwd}
-              >
-                {changingPwd ? '提交中…' : '确认修改'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {pwdOpen && <ChangePasswordModal onClose={() => setPwdOpen(false)} />}
     </MissionShell>
   );
 }

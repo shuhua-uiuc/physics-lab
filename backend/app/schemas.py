@@ -117,6 +117,9 @@ class TokenResponse(CamelModel):
     class_id: str | None = None
     group_id: str | None = None
     name: str
+    # 学生是否还在用统一初始密码。前端据此提示「建议修改初始密码」。
+    # 教师/管理员恒为 false。离线模式没有这个概念，字段缺省。
+    is_default_password: bool = False
 
 
 # ---------- Class ----------
