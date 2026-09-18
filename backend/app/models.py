@@ -206,6 +206,11 @@ class ClassMeta(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     initial_coins_per_group: Mapped[int] = mapped_column(Integer, default=500)
     term_name: Mapped[str] = mapped_column(String, default="")
+    # 挑战奖励单价：按所选题目各自的难度累加出奖励，学生不能自己填。
+    # 定价权归教师——原先奖励由学生自定（默认 100），一局赚的比老师手发一笔还多。
+    coin_easy: Mapped[int] = mapped_column(Integer, default=1)
+    coin_medium: Mapped[int] = mapped_column(Integer, default=2)
+    coin_hard: Mapped[int] = mapped_column(Integer, default=3)
 
 
 class SafetyRecord(Base):

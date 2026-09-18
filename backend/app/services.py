@@ -55,6 +55,16 @@ def add_tx(
     return tx
 
 
+def challenge_reward_for(questions: list[models.Question], meta: models.ClassMeta) -> int:
+    """按所选题目各自的难度累加出挑战奖励。
+
+    定价权归教师（`class_meta` 的三档单价），**学生不能自己填**——否则改个请求体
+    就能把奖励改成任意值。难度 1/2/3 对应简单/中等/困难，越界值向最近档收拢。
+    """
+    rates = {1: meta.coin_easy, 2: meta.coin_medium, 3: meta.coin_hard}
+    return sum(rates[min(3, max(1, q.difficulty or 1))] for q in questions)
+
+
 def settle_challenge(db: Session, challenge: models.Challenge, solver_group_id: str, accuracy: float) -> dict:
     reward = int(challenge.reward * accuracy)
     bonus = int(challenge.reward * 0.2) if accuracy >= 0.95 else 0

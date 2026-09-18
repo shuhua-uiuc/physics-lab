@@ -7,6 +7,7 @@ from ..deps import get_current_user, require_teacher
 from ..models import ClassMeta, CoinTransaction, Group, User
 from ..schemas import (
     ClassMetaOut,
+    ClassMetaUpdate,
     CoinDelta,
     CoinTransfer,
     GroupRankRow,
@@ -140,4 +141,23 @@ def get_class_meta(db: Session = Depends(get_db), _: User = Depends(get_current_
     meta = db.get(ClassMeta, 1)
     if not meta:
         raise HTTPException(status_code=404, detail="班级信息未初始化")
+    return meta
+
+
+@router.put("/class-meta", response_model=ClassMetaOut)
+def update_class_meta(
+    payload: ClassMetaUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_teacher),
+):
+    """教师调整挑战奖励单价（按题目难度）。"""
+    meta = db.get(ClassMeta, 1)
+    if not meta:
+        meta = ClassMeta(id=1)
+        db.add(meta)
+    meta.coin_easy = payload.coinEasy
+    meta.coin_medium = payload.coinMedium
+    meta.coin_hard = payload.coinHard
+    db.commit()
+    db.refresh(meta)
     return meta

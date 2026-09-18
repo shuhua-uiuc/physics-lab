@@ -42,7 +42,7 @@
 - SQLAlchemy ORM + SQLite（`backend/physics_lab.db`）
 - 鉴权：python-jose（JWT，HS256，有效期 12h）+ bcrypt 密码哈希
 - 配置：pydantic-settings（`backend/.env` 或环境变量覆盖）
-- 测试：pytest（`backend/tests/`，103 个用例，7 个文件）
+- 测试：pytest（`backend/tests/`，129 个用例，9 个文件）
 
 ---
 
@@ -87,7 +87,7 @@ Physics_lab/
 │   │   ├── models.py            # 14 张表的 ORM 模型
 │   │   ├── schemas.py           # Pydantic 请求/响应模型（camelCase 序列化）
 │   │   └── routers/             # auth/admin/groups/theory/projects/coins（6 个）
-│   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/quiz/safety_assignments）
+│   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/quiz/challenge_pricing/password_recovery/safety_assignments）
 │   ├── requirements.txt / requirements-dev.txt
 │   └── physics_lab.db           # SQLite 数据文件
 ├── docs/DESIGN.md               # 本文档
@@ -253,11 +253,12 @@ cd backend
 
 ### 8.3 后端端点全表（前缀 `/api`）
 
-**鉴权**：`POST /auth/login`、`POST /auth/register`、`GET /auth/me`
+**鉴权**：`POST /auth/login`（响应含 `isDefaultPassword`——用刚收到的明文密码与 `student_default_password` 比对得出，供前端提示改密）、`POST /auth/register`、`POST /auth/change-password`（校验原密码）、`GET /auth/me`
 
 **班级/用户/教师（管理）**：
 - `GET/POST /classes`、`PATCH/DELETE /classes/{id}`、`GET /classes/{id}/students`、`POST /classes/{id}/students/batch`
 - `GET /users`、`GET /users/{id}`、`PUT /users/{id}/group`、`PUT /users/{id}/avatar`、`DELETE /students/{id}`
+- `POST /students/{id}/password/reset`（`require_teacher`）——把学生密码重置为 `settings.student_default_password`；**新密码由服务端取、不下发前端拼**，返回值带上重置后的密码供老师转告（学生忘记密码时的唯一出路）
 - `GET/POST /teachers`、`DELETE /teachers/{id}`、`PATCH /teachers/{id}/password`
 
 **小组**：
@@ -273,12 +274,13 @@ cd backend
 
 **金币**：
 - `GET /coin-transactions`（最新在前）、`POST /coins/transfer`（组间转账，原子记账，收支共享 refId）
-- `GET /rankings`、`GET /class-meta`
+- `GET /rankings`、`GET /class-meta`、`PUT /class-meta`（`require_teacher`）——挑战奖励单价（简单/中等/困难，各 0~100）
 
 **理论/挑战/展示**：
 - `GET /topics`、`GET /questions`、`POST /quiz/start`、`POST /quiz/{id}/answer`、`POST /quiz/{id}/grade`、**`GET /quiz/sessions`（只返回当前用户自己的会话，按创建时间倒序；前端 bootstrap 拉取后转正序存）**
 - 测验会话的 `answer`/`grade` **校验归属**（`user_id != current.id` → 403）；`grade` 会置 `graded=true`（区分「开始过」与「已交卷」，学习路径前几步用它判定）
 - `GET/POST /challenges`、`GET /challenges/{id}/questions`、`POST /challenges/{id}/submit`
+- ⚠️ `POST /challenges` **不收 reward**：奖励由服务端按 `questionIds` 各自难度 × `class_meta` 三档单价算出（`services.challenge_reward_for`）。前端不可自定价——否则改个请求体就能把奖励改成任意值
 - `GET/POST /showcase`、`POST /showcase/{id}/love`
 - `PUT /showcase/{id}`（学生改本组作品置回待审批；**教师/管理员改保留原状态**）、`DELETE /showcase/{id}`（教师/管理员下架，**已奖励的能量币不回滚**）、`POST /showcase/{id}/review`（教师审批，通过可带 coins 奖励）
 
@@ -300,7 +302,7 @@ cd backend
 ## 9. 后端测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q     # 103 个用例，约 2 秒
+cd backend && .venv/bin/python -m pytest tests/ -q     # 129 个用例，约 5 秒
 ```
 - `tests/test_auth.py`：注册/登录/鉴权
 - `tests/test_groups.py`：建组/加入/改名/分配
@@ -309,6 +311,8 @@ cd backend && .venv/bin/python -m pytest tests/ -q     # 103 个用例，约 2 �
 - `tests/test_safety_assignments.py`：指派可见性分流（含**无小组学生不得误匹配 `group_id IS NULL`** 的回归）、权限、及格由服务端推导防伪造
 - `tests/test_showcase.py`：教师编辑保留审批状态、学生编辑置回待审批、下架权限与「不回滚已奖励能量币」
 - `tests/test_quiz.py`：测验会话按学生隔离（他人查不到/改不了）、判分与「已交卷」标记
+- `tests/test_password_recovery.py`：登录响应里的「还在用初始密码」标记、教师重置学生密码（含权限与未配置初始密码的兜底）
+- `tests/test_challenge_pricing.py`：奖励按题目难度累加、**客户端伪造 reward 被忽略**、单价权限与越界、越界难度向最近档收拢
 
 **注意**：系统 Python 环境缺少 jose 等依赖，必须使用 `backend/.venv/bin/python`。
 
@@ -382,6 +386,8 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 | 超时招募自动结算 | 前端仅预警展示 | 加定时/管理员触发的自动 resolve 逻辑 |
 | 导出 CSV | 能量币趋势/招募状态/班级规模已实现（`downloadCSV`）；流水导出仍是 toast 占位（TeacherOverview.tsx:620） | 补齐流水 CSV 导出 |
 | 小组头像/学生头像 | 仅本地 avatar 字段 | 头像上传后端存储 |
+| `components/ui/Dialog.tsx` 是死代码 | 全仓库无人引用，且用的是**不存在的 token**（`physics-50`/`physics-800`/`card-base` 都没定义），谁想复用都会得到一个没样式的弹窗。新建弹窗请照 `ChangePasswordModal.tsx` 或各页内的既有写法 | 直接删掉，或改成用语义色 token 重写后再用 |
+| 挑战要求恰好 10 道题，但多数主题凑不够 | 表单硬性要求选满 10 题，而题库各主题题量为 `topic-1` 17、`topic-2` 13、其余 6 个主题只有 4~7 题——**实际只有前两个主题能发起挑战** | 把「恰好 10 题」放宽为「3~10 题」，奖励按实际题数累加（计价逻辑已经支持任意题数） |
 
 ### 其余已知假数据（2026-09-15 全量审计，尚未修）
 

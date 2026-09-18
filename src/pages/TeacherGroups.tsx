@@ -125,11 +125,16 @@ export default function TeacherGroups() {
   const updateGroupCoins = useGroupStore((s) => s.updateGroupCoins);
   const adjustUserCoins = useGroupStore((s) => s.adjustUserCoins);
   const resetAllGroupCoins = useGroupStore((s) => s.resetAllGroupCoins);
+  const updateChallengeRates = useGroupStore((s) => s.updateChallengeRates);
   const addTx = useCoinStore((s) => s.addTx);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [globalCoins, setGlobalCoins] = useState(classMeta.initialCoinsPerGroup || 500);
+  // 挑战奖励单价。老师改完点保存才落库，所以本地先存一份草稿。
+  const [rateEasy, setRateEasy] = useState(classMeta.coinEasy);
+  const [rateMedium, setRateMedium] = useState(classMeta.coinMedium);
+  const [rateHard, setRateHard] = useState(classMeta.coinHard);
   const [resetConfirmStep, setResetConfirmStep] = useState(0);
   const [renameInput, setRenameInput] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
@@ -260,6 +265,25 @@ export default function TeacherGroups() {
     setCoinReason('');
   };
 
+  /** 保存挑战奖励单价。学生创建挑战时按题目难度用这三个单价累加出奖励。 */
+  const saveRates = () => {
+    const clamp = (n: number) => Math.max(0, Math.min(100, Math.floor(Number(n)) || 0));
+    const rates = {
+      coinEasy: clamp(rateEasy),
+      coinMedium: clamp(rateMedium),
+      coinHard: clamp(rateHard),
+    };
+    if (rates.coinEasy + rates.coinMedium + rates.coinHard === 0) {
+      flashToast('三档单价不能全为 0，否则学生建不出挑战');
+      return;
+    }
+    updateChallengeRates(rates);
+    setRateEasy(rates.coinEasy);
+    setRateMedium(rates.coinMedium);
+    setRateHard(rates.coinHard);
+    flashToast('挑战奖励单价已保存');
+  };
+
   const confirmResetAll = () => {
     resetAllGroupCoins(globalCoins);
     flashToast(`✔ 全部 ${groups.length} 个小组能量币已重置为 ⚡ ${globalCoins}`);
@@ -382,6 +406,57 @@ export default function TeacherGroups() {
               <FleetStat label="已分组" val={totalMembers} unit="人" grad="from-energy-400 to-alert-500" icon={Users} />
               <FleetStat label="能量池" val={energyPool} unit="⚡" grad="from-growth-400 to-mission-500" icon={Coins} />
             </div>
+          </div>
+        </motion.section>
+
+        {/* 挑战奖励单价 —— 定价权归教师，学生不能自填 */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.04 }}
+          className="glass-card p-5 md:p-6 rounded-[22px]"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-energy-400 to-alert-500 flex items-center justify-center text-white shadow-md shrink-0">
+              <Coins size={17} />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-extrabold text-ink-800">挑战奖励单价</h2>
+              <p className="text-[12px] text-ink-500">
+                学生创建挑战时，奖励按所选 10 道题各自的难度自动累加出来，不能自己填
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            {([
+              { label: '简单题', value: rateEasy, set: setRateEasy },
+              { label: '中等题', value: rateMedium, set: setRateMedium },
+              { label: '困难题', value: rateHard, set: setRateHard },
+            ] as const).map((f) => (
+              <label key={f.label} className="space-y-1">
+                <span className="text-[12px] font-bold text-ink-600">{f.label}单价</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={f.value}
+                    onChange={(e) => f.set(Number(e.target.value))}
+                    className="input !w-24"
+                  />
+                  <span className="text-[12px] text-ink-400 whitespace-nowrap">⚡/题</span>
+                </div>
+              </label>
+            ))}
+            <button className="btn-growth !py-2.5 !px-5" onClick={saveRates}>
+              保存单价
+            </button>
+            <span className="text-[12px] text-ink-500 pb-1">
+              一组 10 题 reward 落在{' '}
+              <b className="text-energy-600 tabular-nums">{rateEasy * 10}</b> ~{' '}
+              <b className="text-energy-600 tabular-nums">{rateHard * 10}</b> ⚡ 之间
+            </span>
           </div>
         </motion.section>
 

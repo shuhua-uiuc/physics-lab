@@ -9,7 +9,7 @@ import {
   saveLS,
   initMockData,
 } from '../data/mockData';
-import { groupsApi, usersApi } from '../lib/apiService';
+import { groupsApi, usersApi, coinsApi } from '../lib/apiService';
 import { syncToApi } from '../lib/syncQueue';
 import { apiEnabled } from '../lib/apiClient';
 
@@ -31,6 +31,8 @@ interface GroupState {
   adjustGroupCoinsLocal: (groupId: string, delta: number) => number;
   /** 批量重置所有小组能量为目标值（基线重置，不写逐组流水）。 */
   resetAllGroupCoins: (targetCoins: number) => void;
+  /** 教师调整挑战奖励单价（简单/中等/困难） */
+  updateChallengeRates: (rates: { coinEasy: number; coinMedium: number; coinHard: number }) => void;
   updateUserPersonalCoins: (userId: string, delta: number) => void;
   /** 教师调整某学生个人能量币：乐观更新 + 同步后端（后端同时记录团队流水）。 */
   adjustUserCoins: (userId: string, delta: number, note?: string) => void;
@@ -55,6 +57,9 @@ export const useGroupStore = create<GroupState>((set, get) => {
   const initialClassMeta = loadLS<ClassMeta>(LS_KEYS.CLASS_META, {
     initialCoinsPerGroup: 500,
     termName: '',
+    coinEasy: 1,
+    coinMedium: 2,
+    coinHard: 3,
   });
 
   const persistAll = (groups: Group[], users: User[], classMeta: ClassMeta) => {
@@ -203,6 +208,15 @@ export const useGroupStore = create<GroupState>((set, get) => {
       persistAll(nextGroups, users, classMeta);
       set({ groups: nextGroups });
       syncToApi(() => groupsApi.resetCoins(targetCoins), 'groups.resetCoins');
+    },
+
+    /** 教师调整挑战奖励单价。奖励由题目难度累加得出，后端才是权威值。 */
+    updateChallengeRates: (rates) => {
+      const { groups, users, classMeta } = get();
+      const nextMeta = { ...classMeta, ...rates };
+      persistAll(groups, users, nextMeta);
+      set({ classMeta: nextMeta });
+      syncToApi(() => coinsApi.updateClassMeta(rates), 'classMeta.update');
     },
 
     updateUserPersonalCoins: (userId, delta) => {

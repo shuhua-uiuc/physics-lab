@@ -11,6 +11,7 @@ from ..deps import get_current_user, require_teacher
 from ..models import (
     Challenge,
     Class,
+    ClassMeta,
     Group,
     Question,
     QuizSession,
@@ -325,18 +326,33 @@ def list_challenges(db: Session = Depends(get_db), _: User = Depends(get_current
 @router.post("/challenges", response_model=ChallengeOut)
 def create_challenge(payload: ChallengeCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     group_id = _require_group(current)
-    if payload.reward < 0:
-        raise HTTPException(status_code=400, detail="奖励不能为负数")
+
+    # 奖励由服务端按题目难度算，**不采信客户端传来的 reward**——否则学生改个请求体
+    # 就能把奖励改成任意值，难度定价也就白做了。
+    if not payload.questionIds:
+        raise HTTPException(status_code=400, detail="请先选择题目")
+    questions = db.query(Question).filter(Question.id.in_(payload.questionIds)).all()
+    if len(questions) != len(set(payload.questionIds)):
+        raise HTTPException(status_code=400, detail="部分题目不存在")
+
+    meta = db.get(ClassMeta, 1) or ClassMeta(id=1)
+    reward = services.challenge_reward_for(questions, meta)
+    if reward <= 0:
+        raise HTTPException(status_code=400, detail="按当前单价算出的奖励为 0，请联系老师设置挑战奖励单价")
+
     group = db.get(Group, group_id)
-    if group is None or group.total_coins < payload.reward:
-        raise HTTPException(status_code=400, detail="能量币不足，无法创建挑战")
+    if group is None or group.total_coins < reward:
+        raise HTTPException(
+            status_code=400,
+            detail=f"能量币不足：本次挑战奖励 {reward} ⚡，本组只有 {group.total_coins if group else 0} ⚡",
+        )
     # 创建挑战预扣能量币
     services.add_tx(
         db,
         group_id,
         source="challenge",
         ref_id=f"pre_{services.gen_id()}",
-        delta=-payload.reward,
+        delta=-reward,
         note=f"创建挑战「{payload.title}」预扣能量币",
     )
     challenge = Challenge(
@@ -345,7 +361,7 @@ def create_challenge(payload: ChallengeCreate, db: Session = Depends(get_db), cu
         creator_group_id=group_id,
         topic_id=payload.topicId,
         question_ids=payload.questionIds,
-        reward=payload.reward,
+        reward=reward,
         deadline=payload.deadline,
         status="open",
         submissions=[],

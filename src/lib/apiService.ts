@@ -116,11 +116,11 @@ export const theoryApi = {
   challenges: () => api.get<Challenge[]>('/api/challenges'),
   /** 当前用户自己的答题会话（后端按 user_id 过滤，倒序返回） */
   quizSessions: () => api.get<QuizSession[]>('/api/quiz/sessions'),
+  /** 创建挑战。**不传 reward**——奖励由后端按所选题目难度与教师设的单价算出 */
   createChallenge: (payload: {
     title: string;
     topicId: string;
     questionIds: string[];
-    reward: number;
     deadline: string;
   }) => api.post<Challenge>('/api/challenges', payload),
   challengeQuestions: (challengeId: string) =>
@@ -291,6 +291,9 @@ export const coinsApi = {
   rankings: () =>
     api.get<{ groupRanking: GroupRankRow[]; personalRanking: PersonalRankRow[] }>('/api/rankings'),
   classMeta: () => api.get<ClassMeta>('/api/class-meta'),
+  /** 教师调整挑战奖励单价（按题目难度） */
+  updateClassMeta: (rates: { coinEasy: number; coinMedium: number; coinHard: number }) =>
+    api.put<ClassMeta>('/api/class-meta', rates),
   transfer: (payload: { sourceGroupId: string; targetGroupId: string; amount: number; note?: string }) =>
     api.post<{ refId: string; sourceBalanceAfter: number; targetBalanceAfter: number }>(
       '/api/coins/transfer',

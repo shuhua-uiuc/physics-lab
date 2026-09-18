@@ -307,10 +307,16 @@ class QuizSessionOut(CamelModel):
 
 # ---------- Challenge ----------
 class ChallengeCreate(BaseModel):
+    """创建挑战。
+
+    注意**没有 reward 字段**：奖励由服务端按所选题目难度与教师的单价算出
+    （`services.challenge_reward_for`），学生不能自定——原先能自填默认 100，
+    改个请求体就能随便改。
+    """
+
     title: str
     topicId: str
     questionIds: list[str] = []
-    reward: int
     deadline: datetime
 
 
@@ -501,3 +507,18 @@ class RankingsOut(CamelModel):
 class ClassMetaOut(CamelModel):
     initial_coins_per_group: int
     term_name: str
+    coin_easy: int
+    coin_medium: int
+    coin_hard: int
+
+
+class ClassMetaUpdate(BaseModel):
+    """教师调整挑战奖励单价（按题目难度）。
+
+    与其它请求模型一致：不继承 CamelModel，字段直接用字面 camelCase。
+    上限 100 是防手滑——真填成 10000，一局挑战就能刷爆全服。
+    """
+
+    coinEasy: int = Field(ge=0, le=100)
+    coinMedium: int = Field(ge=0, le=100)
+    coinHard: int = Field(ge=0, le=100)

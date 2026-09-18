@@ -164,25 +164,36 @@ def test_transfer_zero_amount_rejected(client, auth):
 
 # ---------- 挑战结算 ----------
 
-def _create_challenge(client, auth, reward: int) -> str:
+def _set_rates(client, auth, easy: int, medium: int, hard: int):
+    """教师设置挑战奖励单价（奖励由服务端按题目难度算，不能由客户端传）。"""
+    resp = client.put(
+        "/api/class-meta",
+        json={"coinEasy": easy, "coinMedium": medium, "coinHard": hard},
+        headers=auth("teacher", "teacher123"),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def _create_challenge(client, auth, user: str = "u-1") -> str:
+    """建挑战。奖励由服务端按难度算——conftest 里 q-1/q-2 都是难度 1。"""
     resp = client.post(
         "/api/challenges",
         json={
             "title": "力学挑战",
             "topicId": "t-1",
             "questionIds": ["q-1", "q-2"],
-            "reward": reward,
             "deadline": DEADLINE,
         },
-        headers=auth("u-1"),
+        headers=auth(user),
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["id"]
 
 
 def test_challenge_settle_all_correct(client, auth):
-    # 创建挑战预扣 100：g-1 500 → 400
-    challenge_id = _create_challenge(client, auth, reward=100)
+    # 单价 50/50/50 × 两道简单题 = 奖励 100：g-1 500 → 400
+    _set_rates(client, auth, 50, 50, 50)
+    challenge_id = _create_challenge(client, auth)
     assert _balances(client, auth)["g-1"] == 400
 
     # g-2 学生全部答对：解题组得 100 + 20% 奖励，出题组无退款
@@ -199,7 +210,8 @@ def test_challenge_settle_all_correct(client, auth):
 
 
 def test_challenge_settle_all_wrong(client, auth):
-    challenge_id = _create_challenge(client, auth, reward=100)
+    _set_rates(client, auth, 50, 50, 50)
+    challenge_id = _create_challenge(client, auth)
 
     resp = client.post(
         f"/api/challenges/{challenge_id}/submit",
@@ -297,7 +309,7 @@ def test_recruitment_settle_fail_refund_owner(client, auth):
 
 
 def test_challenge_cannot_resubmit(client, auth):
-    cid = _create_challenge(client, auth, reward=100)
+    cid = _create_challenge(client, auth)
     ok = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-3"))
     assert ok.status_code == 200
     resp = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-3"))
@@ -305,16 +317,17 @@ def test_challenge_cannot_resubmit(client, auth):
 
 
 def test_challenge_creator_cannot_self_submit(client, auth):
-    cid = _create_challenge(client, auth, reward=100)
+    cid = _create_challenge(client, auth)
     resp = client.post(f"/api/challenges/{cid}/submit", json={"answers": {"q-1": 2, "q-2": 1}}, headers=auth("u-1"))
     assert resp.status_code == 403
 
 
 def test_create_challenge_insufficient_balance(client, auth):
-    # u-3 属 g-2（300 币），创建 reward=500 的挑战应被拒绝
+    # 奖励由服务端按难度算（默认单价 × 两道简单题 = 2 币），所以先把 g-2 压到不够
+    client.post("/api/groups/g-2/coins", json={"delta": -299}, headers=auth("teacher", "teacher123"))
     resp = client.post(
         "/api/challenges",
-        json={"title": "高价挑战", "topicId": "t-1", "questionIds": ["q-1", "q-2"], "reward": 500, "deadline": DEADLINE},
+        json={"title": "买不起的挑战", "topicId": "t-1", "questionIds": ["q-1", "q-2"], "deadline": DEADLINE},
         headers=auth("u-3"),
     )
     assert resp.status_code == 400

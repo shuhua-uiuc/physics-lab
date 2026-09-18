@@ -26,6 +26,7 @@ import { useQuestionBankStore } from '@/store/questionBankStore';
 import { useUIStore } from '@/store/uiStore';
 import type { Challenge } from '@/types';
 import { cn } from '@/lib/utils';
+import { challengeRewardFor } from '@/lib/challengePricing';
 
 const CoinBadge = ({ amount, size = 'md', showSymbol = true, className = '' }: { amount: number; size?: 'sm' | 'md' | 'lg'; showSymbol?: boolean; className?: string }) => {
   const sizeMap = { sm: 'h-5 text-xs px-1.5 gap-0.5', md: 'h-7 text-sm px-2 gap-1', lg: 'h-10 text-base px-3 gap-1.5' };
@@ -107,7 +108,7 @@ export default function TheoryChallenge() {
 
   const { topics, questions, challenges, createChallenge, getTopicQuestions } = useTheoryStore();
   const { groupId, userId, role, name } = useAuthStore();
-  const { groups, getGroupById, getUserById } = useGroupStore();
+  const { groups, getGroupById, getUserById, classMeta } = useGroupStore();
   const qbQuestions = useQuestionBankStore((s) => s.questions);
   const submitQuestion = useQuestionBankStore((s) => s.submitQuestion);
   const pushToast = useUIStore((s) => s.pushToast);
@@ -165,7 +166,6 @@ export default function TheoryChallenge() {
 
   const [formTitle, setFormTitle] = useState('');
   const [formTopicId, setFormTopicId] = useState<string>('');
-  const [formReward, setFormReward] = useState(100);
   const [formDeadline, setFormDeadline] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
@@ -190,6 +190,14 @@ export default function TheoryChallenge() {
     return getTopicQuestions(formTopicId).slice(0, 30);
   }, [formTopicId, getTopicQuestions]);
 
+  // 奖励按所选题目的难度算，学生不能自己填（单价由老师在教师端设置）。
+  // 这里只用于预览；在线时后端会独立算一遍作为权威值。
+  // 注意从完整题库取（candidateQuestions 只截了 30 条用于展示）。
+  const computedReward = useMemo(
+    () => challengeRewardFor(questions.filter((q) => formQuestionIds.includes(q.id)), classMeta),
+    [questions, formQuestionIds, classMeta]
+  );
+
   const toggleQ = (qid: string) => {
     setFormQuestionIds((prev) => {
       if (prev.includes(qid)) return prev.filter((x) => x !== qid);
@@ -203,12 +211,12 @@ export default function TheoryChallenge() {
     if (!formTitle.trim()) { setFormErr('请填写挑战标题'); return; }
     if (!formTopicId) { setFormErr('请选择关联主题'); return; }
     if (formQuestionIds.length !== 10) { setFormErr(`请精确选择 10 道题，当前 ${formQuestionIds.length} 道`); return; }
-    if (formReward <= 0) { setFormErr('奖励能量币必须大于 0'); return; }
+    if (computedReward <= 0) { setFormErr('按当前单价算出的奖励为 0，请联系老师设置挑战奖励单价'); return; }
     const deadline = new Date(formDeadline);
     if (isNaN(deadline.getTime()) || deadline.getTime() <= Date.now()) { setFormErr('截止日期必须在未来'); return; }
     const group = getGroupById(myGid);
-    if (!group || group.totalCoins < formReward) {
-      setFormErr(`小组能量币不足，当前 ${group?.totalCoins || 0}，需要 ${formReward}`);
+    if (!group || group.totalCoins < computedReward) {
+      setFormErr(`小组能量币不足，当前 ${group?.totalCoins || 0}，本次奖励需 ${computedReward}`);
       return;
     }
     try {
@@ -217,11 +225,10 @@ export default function TheoryChallenge() {
         creatorGroupId: myGid,
         topicId: formTopicId,
         questionIds: formQuestionIds,
-        reward: formReward,
         deadline,
       });
       setDialogOpen(false);
-      setFormTitle(''); setFormTopicId(''); setFormReward(100); setFormQuestionIds([]); setFormErr('');
+      setFormTitle(''); setFormTopicId(''); setFormQuestionIds([]); setFormErr('');
     } catch (e: any) {
       setFormErr(e.message || '创建失败');
     }
@@ -645,17 +652,17 @@ export default function TheoryChallenge() {
                   <label className="label flex items-center gap-1.5">
                     <Coins size={13} /> 奖励能量币（将从本组预扣）
                   </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={10}
-                      step={10}
-                      value={formReward}
-                      onChange={(e) => setFormReward(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="input"
-                    />
-                    <div className="text-xs text-ink-500 whitespace-nowrap">
-                      本组余额 <span className="font-semibold text-physics-700">{getGroupById(myGid || '')?.totalCoins || 0}</span>
+                  {/* 奖励按所选题目的难度自动算，学生不能自己填——原先可任意填（默认 100），
+                      一局赚的比老师手发一笔还多。单价由老师在教师端「分组管理」页设置。 */}
+                  <div className="flex items-center gap-3 rounded-xl bg-mission-50/70 border border-mission-100 px-3.5 py-2.5">
+                    <span className="text-[22px] font-black text-gradient-energy tabular-nums">⚡ {computedReward}</span>
+                    <span className="text-xs text-ink-500 leading-snug">
+                      按已选 10 题的难度自动计算
+                      <br />
+                      简单 {classMeta.coinEasy} / 中等 {classMeta.coinMedium} / 困难 {classMeta.coinHard} 币每条
+                    </span>
+                    <div className="ml-auto text-xs text-ink-500 whitespace-nowrap">
+                      本组余额 <span className="font-semibold text-mission-700">{getGroupById(myGid || '')?.totalCoins || 0}</span>
                     </div>
                   </div>
                 </div>
@@ -738,7 +745,7 @@ export default function TheoryChallenge() {
                 className="btn-primary !py-2 text-sm"
               >
                 <Zap size={15} />
-                确认创建并预扣 {formReward} 能量币
+                确认创建并预扣 {computedReward} 能量币
               </button>
             </div>
           </div>

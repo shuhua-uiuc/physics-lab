@@ -16,6 +16,7 @@ import { theoryApi, groupsApi, usersApi, coinsApi } from '../lib/apiService';
 import { syncToApi } from '../lib/syncQueue';
 import { reviveDates } from '../lib/reviveDates';
 import { apiEnabled } from '../lib/apiClient';
+import { challengeRewardFor } from '../lib/challengePricing';
 
 /**
  * 结算/挑战写操作后，后端已改动小组余额与交易流水，也可能新增/更新挑战。
@@ -45,12 +46,15 @@ interface TheoryState {
   startQuiz: (topicId: string, userId?: string | null) => Promise<QuizSession>;
   submitAnswer: (sessionId: string, qid: string, answer: any) => void;
   gradeQuiz: (sessionId: string) => QuizSession;
+  /**
+   * 创建挑战。**不接受调用方传奖励**——按所选题目难度与教师设的单价算
+   * （`lib/challengePricing.ts`）。在线时后端还会自己算一遍作为权威值。
+   */
   createChallenge: (params: {
     title: string;
     creatorGroupId: string;
     topicId: string;
     questionIds: string[];
-    reward: number;
     deadline: Date;
   }) => Challenge;
   acceptChallenge: (challengeId: string, solverGroupId: string) => Question[];
@@ -213,8 +217,12 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
       return gradedSession!;
     },
 
-    createChallenge: ({ title, creatorGroupId, topicId, questionIds, reward, deadline }) => {
+    createChallenge: ({ title, creatorGroupId, topicId, questionIds, deadline }) => {
       const { topics, questions, quizSessions, challenges } = get();
+
+      // 奖励由题目难度算出来，定价权在教师。在线时后端会独立再算一遍（权威值）。
+      const pickedQuestions = questions.filter((q) => questionIds.includes(q.id));
+      const reward = challengeRewardFor(pickedQuestions, useGroupStore.getState().classMeta);
 
       useCoinStore.getState().addTx(creatorGroupId, {
         source: 'challenge',
@@ -243,7 +251,6 @@ export const useTheoryStore = create<TheoryState>((set, get) => {
           title,
           topicId,
           questionIds,
-          reward,
           deadline: (deadline instanceof Date ? deadline : new Date(deadline)).toISOString(),
         });
         await refetchAfterChallenge();

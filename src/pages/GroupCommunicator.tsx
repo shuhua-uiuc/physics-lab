@@ -24,6 +24,7 @@ import {
   Award,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { challengeRewardFor } from '@/lib/challengePricing';
 
 type TabKey = 'challenges' | 'recruitments' | 'transfers';
 
@@ -218,8 +219,8 @@ function TransferHistoryItem({ tx }: { tx: any }) {
 export default function GroupCommunicator() {
   const navigate = useNavigate();
   const { userId, groupId, role } = useAuthStore();
-  const { groups, getGroupById, getGroupUsers } = useGroupStore();
-  const { challenges, createChallenge, getTopicQuestions, topics } = useTheoryStore();
+  const { groups, getGroupById, getGroupUsers, classMeta } = useGroupStore();
+  const { challenges, createChallenge, getTopicQuestions, topics, questions: allQuestions } = useTheoryStore();
   const { recruitments, projects, placeBid, assignRecruitment, resolveRecruitment } = useProjectStore();
   const { coinTxs, transferCoins } = useCoinStore();
   const pushToast = useUIStore((s) => s.pushToast);
@@ -262,7 +263,6 @@ export default function GroupCommunicator() {
   const [challengeForm, setChallengeForm] = useState({
     title: '',
     topicId: '',
-    reward: 100,
     questionIds: [] as string[],
   });
   
@@ -286,27 +286,32 @@ export default function GroupCommunicator() {
     if (!challengeForm.topicId) return [];
     return getTopicQuestions(challengeForm.topicId).slice(0, 30);
   }, [challengeForm.topicId, getTopicQuestions]);
+
+  // 奖励按所选题目难度自动算，学生不能自填（单价由教师在教师端设置）。
+  const challengeReward = useMemo(
+    () => challengeRewardFor(allQuestions.filter((q) => challengeForm.questionIds.includes(q.id)), classMeta),
+    [allQuestions, challengeForm.questionIds, classMeta]
+  );
   
   const handleCreateChallenge = () => {
     if (!groupId) return;
     if (!challengeForm.title.trim()) return pushToast('请填写挑战标题', 'warning');
     if (!challengeForm.topicId) return pushToast('请选择主题', 'warning');
     if (challengeForm.questionIds.length !== 10) return pushToast('请选择10道题目', 'warning');
-    if (challengeForm.reward <= 0) return pushToast('奖励必须大于0', 'warning');
-    if (myCoins < challengeForm.reward) return pushToast('能量币不足', 'warning');
+    if (challengeReward <= 0) return pushToast('按当前单价算出的奖励为 0，请联系老师设置挑战奖励单价', 'warning');
+    if (myCoins < challengeReward) return pushToast('能量币不足', 'warning');
 
     createChallenge({
       title: challengeForm.title.trim(),
       creatorGroupId: groupId,
       topicId: challengeForm.topicId,
       questionIds: challengeForm.questionIds,
-      reward: challengeForm.reward,
       deadline: new Date(Date.now() + 7 * 86400000),
     });
-    
+
     pushToast('挑战已发起！', 'success');
     setActiveDialog(null);
-    setChallengeForm({ title: '', topicId: '', reward: 100, questionIds: [] });
+    setChallengeForm({ title: '', topicId: '', questionIds: [] });
   };
   
   const handleAcceptChallenge = (challengeId: string) => {
@@ -555,7 +560,15 @@ export default function GroupCommunicator() {
                 <div className="p-8 text-center">
                   <Megaphone size={32} className="mx-auto text-ink-300 mb-2" />
                   <p className="text-ink-500 text-sm">你还没有发布招募</p>
-                  <p className="text-xs text-ink-400">在项目详情页发布招募公告</p>
+                  {/* 原先这里写「在项目详情页发布招募公告」——但项目中心页只有展示、没有发布入口，
+                      是把人指到死路。发布按钮就在这张卡片右上角（仅组长可见）。 */}
+                  <p className="text-xs text-ink-400">
+                    {!myGroupProject
+                      ? '本组还没有项目，先在项目中心创建项目才能发布招募'
+                      : isLeader
+                        ? '点右上角「发布招募公告」即可发布'
+                        : '只有组长可以发布招募公告'}
+                  </p>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -697,13 +710,15 @@ export default function GroupCommunicator() {
               </div>
               <div>
                 <label className="label">悬赏能量币（预扣）</label>
-                <input
-                  type="number"
-                  min={10}
-                  value={challengeForm.reward}
-                  onChange={(e) => setChallengeForm({ ...challengeForm, reward: Math.max(0, parseInt(e.target.value) || 0) })}
-                  className="input"
-                />
+                {/* 奖励按所选题目难度自动算，学生不能自填（原先可任意填，默认 100） */}
+                <div className="flex items-center gap-3 rounded-xl bg-mission-50/70 border border-mission-100 px-3.5 py-2.5">
+                  <span className="text-[20px] font-black text-gradient-energy tabular-nums">⚡ {challengeReward}</span>
+                  <span className="text-xs text-ink-500 leading-snug">
+                    按已选题目难度自动计算
+                    <br />
+                    简单 {classMeta.coinEasy} / 中等 {classMeta.coinMedium} / 困难 {classMeta.coinHard} 币每条
+                  </span>
+                </div>
                 <p className="text-xs text-ink-500 mt-1">当前余额: {myCoins} 能量币</p>
               </div>
               <div>

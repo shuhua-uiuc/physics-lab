@@ -949,12 +949,15 @@ export default function Dashboard() {
                             <Trash2 size={12} />
                           </button>
                           {canPublish(p.ownerGroupId) && (
+                            // 原先是个 24×24 的小喇叭图标，混在编辑/删除里，组长基本发现不了。
+                            // 招募是「找人来帮忙」的主动动作，值得一个带文字的按钮。
                             <button
-                              title="发布招募"
-                              className="w-6 h-6 rounded-lg bg-white/80 border border-ink-100 flex items-center justify-center text-ink-500 hover:text-energy-600 transition"
+                              title="发布招募公告"
+                              className="h-6 px-2 rounded-lg bg-gradient-to-br from-energy-400 to-alert-500 text-white text-[11px] font-bold flex items-center gap-1 hover:opacity-90 transition"
                               onClick={(e) => { e.stopPropagation(); openRecruit(p); }}
                             >
                               <Megaphone size={12} />
+                              发布招募
                             </button>
                           )}
                         </div>

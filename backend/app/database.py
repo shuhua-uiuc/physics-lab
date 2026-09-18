@@ -92,3 +92,15 @@ def _run_lightweight_migrations() -> None:
                 conn.execute(
                     text("UPDATE quiz_sessions SET graded = 1 WHERE score > 0 OR blind_points NOT IN ('[]', '')")
                 )
+
+    # 挑战奖励单价（按题目难度计价），给已存在的库补列
+    if "class_meta" in inspector.get_table_names():
+        cm_columns = {col["name"] for col in inspector.get_columns("class_meta")}
+        with engine.begin() as conn:
+            if "coin_easy" not in cm_columns:
+                conn.execute(text("ALTER TABLE class_meta ADD COLUMN coin_easy INTEGER DEFAULT 1"))
+            if "coin_medium" not in cm_columns:
+                conn.execute(text("ALTER TABLE class_meta ADD COLUMN coin_medium INTEGER DEFAULT 2"))
+            if "coin_hard" not in cm_columns:
+                conn.execute(text("ALTER TABLE class_meta ADD COLUMN coin_hard INTEGER DEFAULT 3"))
+

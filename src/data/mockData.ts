@@ -181,6 +181,10 @@ export interface ShowcaseItem {
 
 export interface ClassMeta {
   initialCoinsPerGroup: number;
+  /** 挑战奖励单价（简单/中等/困难）。奖励由题目难度累加得出，学生不能自填。 */
+  coinEasy: number;
+  coinMedium: number;
+  coinHard: number;
   termName: string;
 }
 
@@ -611,6 +615,9 @@ export function initMockData(): void {
   const classMeta: ClassMeta = {
     initialCoinsPerGroup: 500,
     termName: '2025-2026学年第一学期',
+    coinEasy: 1,
+    coinMedium: 2,
+    coinHard: 3,
   };
   saveLS(LS_KEYS.GROUPS, rawGroups);
   localStorage.setItem('plab_users_cache', JSON.stringify(users));
