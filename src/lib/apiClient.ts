@@ -1,11 +1,12 @@
-import { LS_KEYS } from '../data/mockData';
+import { clearSessionStorage } from './storage';
+import { autoReviveDate } from './dateReviver';
 
 /**
  * 后端 API 客户端。
  *
  * - 通过环境变量 VITE_API_BASE_URL 指定后端地址（如 http://localhost:8000）。
  * - 未配置时 apiEnabled 为 false，前端保持原有 localStorage 离线模式，零影响。
- * - JWT 存于 localStorage(plab_token)，自动附加到 Authorization 头。
+ * - JWT 根据自动登录选择存于 localStorage 或 sessionStorage，自动附加到 Authorization 头。
  */
 
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -18,10 +19,20 @@ const API_BASE = RAW_BASE === '/' ? '' : RAW_BASE.replace(/\/$/, '');
 export const apiEnabled = Boolean(RAW_BASE);
 
 const TOKEN_KEY = 'plab_token';
+const REMEMBER_KEY = 'plab_remember_login';
+
+export function getLoginPersistence(): boolean {
+  try { return localStorage.getItem(REMEMBER_KEY) === 'true'; } catch { return false; }
+}
+
+/** 在登录请求前设置；未设置的旧版本会话继续使用持久化存储。 */
+export function setLoginPersistence(remember: boolean): void {
+  try { localStorage.setItem(REMEMBER_KEY, String(remember)); } catch { /* ignore */ }
+}
 
 export function getToken(): string | null {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
@@ -29,8 +40,12 @@ export function getToken(): string | null {
 
 export function setToken(token: string | null): void {
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    if (token) {
+      const storage = localStorage.getItem(REMEMBER_KEY) === 'false' ? sessionStorage : localStorage;
+      storage.setItem(TOKEN_KEY, token);
+    }
   } catch {
     /* ignore */
   }
@@ -58,31 +73,35 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
+  if (res.ok && token && getToken() !== token) {
+    throw new ApiError(409, '会话已切换，已忽略旧请求结果');
+  }
   if (res.status === 204) return undefined as T;
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
+  let rawData: unknown;
+  try {
+    rawData = text ? JSON.parse(text) : undefined;
+  } catch {
+    // nginx 的 HTML 错误页仍保留 HTTP 状态；成功响应格式错则报契约错误。
+    if (res.ok) throw new ApiError(res.status, '服务器返回了无效的 JSON');
+  }
 
+  if (res.ok && token && getToken() !== token) {
+    throw new ApiError(409, '会话已切换，已忽略旧请求结果');
+  }
   if (!res.ok) {
-    if (res.status === 401 && token) {
-      // 已登录态失效（请求带了 token 却被拒）：清空登录信息并回到登录页。
-      // 未带 token 的 401（如登录/注册密码错误）不触发，避免误判为会话过期。
+    if (res.status === 401 && token && getToken() === token) {
+      // 旧账号迟到的 401 不得注销新账号；先处理状态，再解释响应正文。
       setToken(null);
-      localStorage.removeItem(LS_KEYS.CURRENT_USER);
-      // 个人数据也一并清掉。这里不调 sessionCleanup——那会形成
-      // apiClient → sessionCleanup → store → apiClient 的循环依赖；
-      // 而且下面做的是整页跳转，store 会重建，清 LS 就够了。
-      try {
-        localStorage.removeItem(LS_KEYS.QUIZ_SESSIONS);
-      } catch {
-        /* localStorage 不可用时忽略 */
-      }
+      clearSessionStorage();
       if (typeof window !== 'undefined') window.location.href = '/login';
     }
-    const detail = (data && (data.detail || data.message)) || res.statusText;
+    const errorData = rawData && typeof rawData === 'object' ? rawData as Record<string, unknown> : null;
+    const detail = errorData?.detail || errorData?.message || res.statusText;
     throw new ApiError(res.status, typeof detail === 'string' ? detail : '请求失败');
   }
-  return data as T;
+  return autoReviveDate(rawData) as T;
 }
 
 export const api = {

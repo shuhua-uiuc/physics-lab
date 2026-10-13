@@ -1,16 +1,6 @@
 import { create } from 'zustand';
-import {
-  Project,
-  ProjectStatus,
-  Recruitment,
-  RecruitmentBid,
-  ShowcaseItem,
-  SafetyCategory,
-  EquipmentItem,
-  LS_KEYS,
-  loadLS,
-  saveLS,
-} from '../data/mockData';
+import type { Project, ProjectStatus, Recruitment, RecruitmentBid, ShowcaseItem, SafetyCategory, EquipmentItem } from '../types';
+import { LS_KEYS, loadLS, saveLS } from '../lib/storage';
 import { useCoinStore } from './coinStore';
 import { useGroupStore } from './groupStore';
 import { projectsApi, recruitmentsApi, showcaseApi, groupsApi, usersApi, coinsApi } from '../lib/apiService';
@@ -75,7 +65,7 @@ interface ProjectState {
     coins?: number,
     reason?: string
   ) => void;
-  toggleShowcaseLove: (showcaseId: string, userId: any) => void;
+  toggleShowcaseLove: (showcaseId: string, userId: string) => void;
   getProjectById: (projectId: string) => Project | undefined;
   getRecruitmentsByProject: (projectId: string) => Recruitment[];
 }
@@ -98,7 +88,7 @@ async function refetchAfterSettlement(): Promise<void> {
   const [groups, users, coinTxs] = await Promise.all([
     groupsApi.list(),
     usersApi.list(),
-    coinsApi.transactions() as Promise<any[]>,
+    coinsApi.transactions(),
   ]);
   useGroupStore.setState({ groups, users });
   useCoinStore.setState({ coinTxs: reviveDates(coinTxs, ['createdAt']) });
@@ -166,7 +156,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         safetyPassed: partial.safetyPassed || {},
         photos: partial.photos || [],
         results: partial.results || '',
-        rewardCoins: partial.rewardCoins || 200,
+        rewardCoins: partial.rewardCoins ?? 200,
       };
       const next = [...projects, project];
       persist(next, recruitments, showcaseItems);
@@ -185,7 +175,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           ).toISOString(),
           rewardCoins: project.rewardCoins,
           ownerGroupId: project.ownerGroupId,
-        } as any);
+        });
         const fresh = await projectsApi.list();
         set({ projects: reviveProjectDates(fresh) });
       }, 'projects.create');

@@ -15,13 +15,12 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import MissionShell from '@/components/layout/MissionShell';
 import AvatarStack from '@/components/ui/AvatarStack';
 import { useGroupStore } from '@/store/groupStore';
 import { useAuthStore } from '@/store/authStore';
 import { useCoinStore } from '@/store/coinStore';
 import { classesApi } from '@/lib/apiService';
-import { SchoolClass } from '@/data/mockData';
+import type { SchoolClass } from '@/types';
 import { cn, formatAxisTick } from '@/lib/utils';
 
 type TabKey = 'total' | 'month' | 'week' | 'personal';
@@ -57,7 +56,6 @@ export default function ResearchLeague() {
 
   const isStaff = role === 'teacher' || role === 'admin';
   // 学生仅见本班排名；教师/管理员见全部
-  const inScope = (cid: string | null | undefined) => isStaff || cid === myClassId;
 
   // 近 7/30 天各组能量币增量
   const periodSum = useMemo(() => {
@@ -78,8 +76,7 @@ export default function ResearchLeague() {
     for (const u of users) if (u.groupId) counts[u.groupId] = (counts[u.groupId] || 0) + 1;
     return groups
       .map((g) => ({ ...g, memberCount: counts[g.id] || 0 }))
-      .filter((g) => g.memberCount > 0 && inScope(g.classId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .filter((g) => g.memberCount > 0 && (isStaff || g.classId === myClassId));
   }, [groups, users, myClassId, isStaff]);
 
   // 小组榜单：总榜=totalCoins；月/周=period增量；按班级分组降序
@@ -90,7 +87,7 @@ export default function ResearchLeague() {
     const map: Record<string, { classId: string; className: string; rows: { groupId: string; name: string; coins: number; memberCount: number }[] }> = {};
     for (const g of memberedGroups) {
       const cid = g.classId || 'unknown';
-      if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, rows: [] };
+      if (!map[cid]) map[cid] = { classId: cid, className: cid === 'unknown' ? '未分班小组' : classesById[cid] || cid, rows: [] };
       map[cid].rows.push({ groupId: g.id, name: g.name, coins: coinOf(g), memberCount: g.memberCount });
     }
     return Object.values(map)
@@ -102,9 +99,9 @@ export default function ResearchLeague() {
   const personalByClass = useMemo(() => {
     const map: Record<string, { classId: string; className: string; rows: { userId: string; name: string; coins: number }[] }> = {};
     for (const u of users) {
-      if (!inScope(u.classId)) continue;
+      if (!(isStaff || u.classId === myClassId)) continue;
       const cid = u.classId || 'unknown';
-      if (!map[cid]) map[cid] = { classId: cid, className: classesById[cid] || cid, rows: [] };
+      if (!map[cid]) map[cid] = { classId: cid, className: cid === 'unknown' ? '未分班小组' : classesById[cid] || cid, rows: [] };
       map[cid].rows.push({ userId: u.id, name: u.name, coins: u.personalCoins });
     }
     return Object.values(map)
@@ -148,10 +145,10 @@ export default function ResearchLeague() {
       series[g.name] = curve.map((v, i) => (i < cut ? null : v));
     }
 
-    const days: Record<string, any>[] = [];
+    const days: Record<string, string | number | null>[] = [];
     for (let i = 0; i < 30; i++) {
       const d = new Date(windowStart + i * DAY);
-      const row: Record<string, any> = { date: `${d.getMonth() + 1}/${d.getDate()}` };
+      const row: Record<string, string | number | null> = { date: `${d.getMonth() + 1}/${d.getDate()}` };
       for (const n of groupNames) row[n] = series[n][i];
       days.push(row);
     }
@@ -182,7 +179,7 @@ export default function ResearchLeague() {
   const isPersonal = tab === 'personal';
 
   return (
-    <MissionShell>
+    <>
       <div className="space-y-6">
         <motion.section
           initial={{ opacity: 0, y: 16 }}
@@ -271,7 +268,7 @@ export default function ResearchLeague() {
                         <tbody>
                           {cls.rows.map((r, i) => (
                             <motion.tr
-                              key={(r as any).groupId || (r as any).userId}
+                              key={('groupId' in r ? r.groupId : r.userId)}
                               initial={{ opacity: 0, x: -10 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ duration: 0.35, delay: 0.15 + i * 0.05 }}
@@ -289,7 +286,7 @@ export default function ResearchLeague() {
                                 </div>
                               </td>
                               <td className="py-3 px-2 font-semibold text-ink-800">{r.name}</td>
-                              {!isPersonal && <td className="py-3 px-2 text-ink-500">{(r as any).memberCount} 人</td>}
+                              {!isPersonal && <td className="py-3 px-2 text-ink-500">{('memberCount' in r ? r.memberCount : 0)} 人</td>}
                               <td className="py-3 px-2 text-right font-bold tabular-nums text-ink-800">
                                 {r.coins.toLocaleString()} ⚡
                               </td>
@@ -357,7 +354,7 @@ export default function ResearchLeague() {
                         fontSize: 12,
                       }}
                       labelStyle={{ fontWeight: 700, color: '#1E293B', marginBottom: 6 }}
-                      formatter={(value: any, name: any) => [`${Number(value).toLocaleString()} ⚡`, name]}
+                      formatter={(value: number | string, name: string) => [`${Number(value).toLocaleString()} ⚡`, name]}
                     />
                     {trend.groupNames.map((n, i) => {
                       const c = GROUP_COLORS[i % GROUP_COLORS.length];
@@ -469,6 +466,6 @@ export default function ResearchLeague() {
           </div>
         </div>
       </div>
-    </MissionShell>
+    </>
   );
 }

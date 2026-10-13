@@ -24,6 +24,8 @@
 npm install
 npm run dev       # http://localhost:5173
 npm run check     # 类型检查（提交前必须通过）
+npm run lint      # 静态检查
+npm run test:core # 日期、错误、会话、模块依赖与完成结算契约
 ```
 
 后端（必须用项目自带 venv，系统 Python 缺依赖）：
@@ -34,7 +36,7 @@ cd backend
 .venv/bin/python -m pytest tests/ -q
 ```
 
-前端不配 `VITE_API_BASE_URL` 时走 **localStorage 离线演示模式**；配置后进入在线模式（乐观更新 + 后台同步）。本地联调可复制 `.env.example` 为 `.env.local` 并设为 `http://localhost:8000`。
+前端不配 `VITE_API_BASE_URL` 时走 **localStorage 离线演示模式**；配置后进入在线模式。在线测验与安全考核由服务端判分，业务写入后会重拉服务端快照；无法完成数据引导时不会沿用上一账号的缓存。本地联调可复制 `.env.example` 为 `.env.local` 并设为 `http://localhost:8000`。
 
 ## 默认账号
 
@@ -49,5 +51,6 @@ cd backend
 ## 文档
 
 - [docs/DESIGN.md](docs/DESIGN.md) —— 权威设计文档（架构、数据流、路由、API、设计系统）
+- [docs/refactoring/README.md](docs/refactoring/README.md) —— 分阶段重构计划、当前进展与 UI 截图
 - [CLAUDE.md](CLAUDE.md) —— 面向 AI 助手的开发约定与易踩坑清单
 - [DEPLOY.md](DEPLOY.md) —— Docker 部署与运维

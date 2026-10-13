@@ -1,24 +1,8 @@
+import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Coins,
-  Target,
-  Trophy,
-  Swords,
-  Rocket,
-  Plus,
-  X,
-  Clock,
-  Zap,
-  ChevronDown,
-  Calendar,
-  Sparkles,
-  Users,
-  BookOpenText,
-  CheckCircle2,
-  AlertCircle,
-  UserCircle2,
-} from 'lucide-react';
+import { Coins, Target, Trophy, Swords, Rocket, Plus, X, Clock, Zap, ChevronDown, Calendar, Sparkles, Users, BookOpenText, AlertCircle, UserCircle2, ArrowRight } from 'lucide-react';
 import { useTheoryStore } from '@/store/theoryStore';
 import { useAuthStore } from '@/store/authStore';
 import { useGroupStore } from '@/store/groupStore';
@@ -55,7 +39,7 @@ const Chip = ({ children, variant = 'physics', className = '' }: { children: Rea
 
 type TabKey = 'open' | 'created' | 'joined' | 'mine';
 
-const TABS: { key: TabKey; label: string; icon: any; badge?: boolean }[] = [
+const TABS: { key: TabKey; label: string; icon: LucideIcon; badge?: boolean }[] = [
   { key: 'open', label: '可接受挑战', icon: Swords, badge: true },
   { key: 'created', label: '我发起的挑战', icon: Rocket },
   { key: 'joined', label: '我参与的挑战', icon: Trophy },
@@ -88,7 +72,7 @@ const CountdownChip = ({ deadline }: { deadline: Date }) => {
   );
 };
 
-function QuestionCheckbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function QuestionCheckbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode }) {
   return (
     <label className="flex items-start gap-2 p-3 rounded-xl2 hover:bg-physics-50 cursor-pointer ring-1 ring-transparent hover:ring-physics-100 transition-all">
       <input
@@ -109,7 +93,7 @@ export default function TheoryChallenge() {
 
   const { topics, questions, challenges, createChallenge, getTopicQuestions } = useTheoryStore();
   const { groupId, userId, role, name } = useAuthStore();
-  const { groups, getGroupById, getUserById, classMeta } = useGroupStore();
+  const { groups, getGroupById, classMeta } = useGroupStore();
   const qbQuestions = useQuestionBankStore((s) => s.questions);
   const submitQuestion = useQuestionBankStore((s) => s.submitQuestion);
   const pushToast = useUIStore((s) => s.pushToast);
@@ -127,7 +111,7 @@ export default function TheoryChallenge() {
 
   const resetQForm = () => setQForm({ type: 'single', stem: '', options: ['', '', '', ''], answer: 0, kp: '' });
 
-  const handleSubmitQuestion = () => {
+  const handleSubmitQuestion = async () => {
     if (!userId) { pushToast('请先登录', 'error'); return; }
     const stem = qForm.stem.trim();
     if (!stem) return setQFormErr('请填写题干');
@@ -142,10 +126,12 @@ export default function TheoryChallenge() {
       const arr = Array.isArray(answer) ? answer : [];
       answer = arr.map((i) => trimmed.indexOf(kept[i])).filter((n) => n >= 0);
     }
-    submitQuestion({ type: qForm.type, stem, options: kept, answer, knowledgePoint: qForm.kp.trim(), difficulty: 1 }, userId, name || '学生');
+    try {
+    await submitQuestion({ type: qForm.type, stem, options: kept, answer, knowledgePoint: qForm.kp.trim(), difficulty: 1 }, userId, name || '学生');
     pushToast('题目已提交，等待教师审核', 'success');
     resetQForm();
     setQFormErr('');
+    } catch (err) { setQFormErr(err instanceof Error ? err.message : '提交失败，请重试'); }
   };
 
   const myGid = groupId || (role === 'teacher' ? groups[0]?.id : undefined);
@@ -180,7 +166,7 @@ export default function TheoryChallenge() {
       const rnd = Math.floor(Math.random() * 900) + 100;
       setFormTitle(`第 ${rnd} 号挑战 · ${topics[0]?.title || '物理'}对决`);
     }
-  }, [dialogOpen]);
+  }, [dialogOpen, formTitle, topics]);
 
   useEffect(() => {
     setFormQuestionIds([]);
@@ -231,15 +217,15 @@ export default function TheoryChallenge() {
       });
       setDialogOpen(false);
       setFormTitle(''); setFormTopicId(''); setFormQuestionIds([]); setFormErr('');
-    } catch (e: any) {
-      setFormErr(e.message || '创建失败');
+    } catch (e: unknown) {
+      setFormErr((e instanceof Error ? e.message : undefined) || '创建失败');
     }
   };
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-[1280px] mx-auto px-6 py-8 space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="max-w-[1280px] mx-auto space-y-6">
+        <div className="glass-card p-5 md:p-7 flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Chip variant="energy"><Sparkles size={12} /> 组间 PK · 凭实力赢能量币</Chip>
@@ -263,10 +249,11 @@ export default function TheoryChallenge() {
           </button>
         </div>
 
-        <div className="flex gap-2 p-1.5 bg-ink-100/80 rounded-xl2 w-fit">
+        <div className="student-inline-tabs flex gap-2 p-1.5 bg-ink-100/80 rounded-xl2 w-fit">
           {TABS.map((t) => (
             <button
               key={t.key}
+              aria-pressed={tab === t.key}
               onClick={() => setTab(t.key)}
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
                 tab === t.key
@@ -325,10 +312,11 @@ export default function TheoryChallenge() {
                   <div className="px-5 pb-5">
                     <button
                       onClick={() => navigate(`/theory/challenge/${c.id}/accept`)}
-                      className="btn-primary w-full !py-3 text-base"
+                      className="btn-primary inline-flex items-center justify-center gap-2 min-h-11 w-full !py-3 text-base"
                     >
-                      <Swords size={18} />
-                      接受挑战 →
+                      <Swords size={18} className="shrink-0" aria-hidden="true" />
+                      <span>接受挑战</span>
+                      <ArrowRight size={18} className="shrink-0" aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -702,7 +690,7 @@ export default function TheoryChallenge() {
                       <QuestionCheckbox
                         key={q.id}
                         checked={formQuestionIds.includes(q.id)}
-                        onChange={(v) => toggleQ(q.id)}
+                        onChange={() => toggleQ(q.id)}
                         label={
                           <>
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold mr-2 px-1.5 py-0.5 rounded bg-physics-50 text-physics-700">
@@ -719,7 +707,7 @@ export default function TheoryChallenge() {
                               {q.type === 'single' ? '单选' : q.type === 'multiple' ? '多选' : '判断'}
                             </span>
                             {q.stem}
-                          </> as any
+                          </>
                         }
                       />
                     ))}

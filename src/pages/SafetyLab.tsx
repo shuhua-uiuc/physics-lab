@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { safetyApi, safetyAssignmentApi, SafetyRecord, SafetyAssignment } from '@/lib/apiService';
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +29,7 @@ import { cn } from '@/lib/utils';
 interface SafetyDomain {
   category: SafetyCategory;
   name: string;
-  icon: any;
+  icon: LucideIcon;
   color: string;
   grad: string;
   passedQuestions: number;
@@ -327,12 +328,12 @@ export default function SafetyLab() {
         )}
       </AnimatePresence>
 
-      <section className="glass-card glass-card-hover p-8 rounded-[28px] relative overflow-hidden">
+      <section className="student-safety-intro glass-card p-8 rounded-[28px] relative overflow-hidden">
         <div className="absolute -right-32 -top-32 w-[400px] h-[400px] rounded-full bg-gradient-to-br from-growth-300/25 via-mission-300/15 to-nova-300/10 blur-3xl pointer-events-none" />
         <div className="absolute -left-20 -bottom-24 w-80 h-80 rounded-full bg-gradient-to-br from-mission-300/20 via-nova-300/10 to-transparent blur-3xl pointer-events-none" />
 
         <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-5 flex items-center gap-6">
+          <div className="student-safety-brand lg:col-span-5 flex items-center gap-6">
             <div className="relative shrink-0">
               <div className="absolute -inset-3 rounded-[32px] bg-growth-400/25 blur-2xl animate-pulse" />
               <div className="shield-card relative w-28 h-32 bg-gradient-to-br from-growth-300 via-growth-500 to-growth-700 shadow-glowMission flex items-center justify-center">
@@ -345,9 +346,9 @@ export default function SafetyLab() {
                 <ShieldCheck size={12} />
                 SAFETY FIRST · ZERO INCIDENT
               </div>
-              <h1 className="text-4xl font-black tracking-tight mb-2.5 leading-tight">
-                <span className="text-gradient-mission">Safety Lab</span>
-                <span className="text-ink-800"> · 安全实验舱</span>
+              <h1 className="student-safety-title font-black tracking-tight mb-2.5 leading-tight">
+                <span className="block text-ink-800">安全实验舱</span>
+                <span className="block text-mission-600 text-base font-semibold mt-1">Safety Lab</span>
               </h1>
               <p className="text-lg text-ink-600 font-medium leading-relaxed">
                 安全是一切研究的基石。通过严格考核，守护每一次探索。
@@ -355,7 +356,7 @@ export default function SafetyLab() {
             </div>
           </div>
 
-          <div className="lg:col-span-7 grid grid-cols-3 gap-4">
+          <div className="student-safety-stats lg:col-span-7 grid grid-cols-3 gap-4">
             {[
               { label: '已通过认证', value: passedCount, total: SAFETY_DOMAINS.length, icon: CheckCircle2, color: 'growth', grad: 'from-growth-400 via-growth-500 to-growth-600' },
               { label: '待参加考核', value: pendingCount, total: SAFETY_DOMAINS.length, icon: PlayCircle, color: 'energy', grad: 'from-energy-400 via-alert-500 to-energy-600' },
@@ -368,7 +369,7 @@ export default function SafetyLab() {
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.08 }}
-                  className="glass-card !p-5 !rounded-2xl text-center relative overflow-hidden group"
+                  className="student-safety-stat glass-card !p-5 !rounded-2xl text-center relative overflow-hidden group"
                 >
                   <div className={cn('absolute -top-6 -right-6 w-24 h-24 rounded-full blur-2xl opacity-30 bg-gradient-to-br', stat.grad)} />
                   <div className="relative">
@@ -378,7 +379,7 @@ export default function SafetyLab() {
                     )}>
                       <Icon size={22} className="text-white" />
                     </div>
-                    <div className="flex items-baseline justify-center gap-1 mb-1">
+                    <div className="student-safety-stat-value flex items-baseline justify-center gap-1 mb-1">
                       <TickerNumber value={stat.value} />
                       <span className={cn('text-2xl font-black text-ink-300', '')}>/ {stat.total}</span>
                     </div>
@@ -399,7 +400,7 @@ export default function SafetyLab() {
             <ShieldCheck size={12} />
             六大安全领域 · 分类考核
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {domains.map((domain, idx) => {
               const Icon = domain.icon;
               return (
@@ -423,13 +424,13 @@ export default function SafetyLab() {
                           domain.color === 'mission'
                             ? 'linear-gradient(90deg, #4F7CFF 0%, #8B5CF6 50%, #4F7CFF 100%)'
                             : domain.color === 'energy'
-                              ? 'linear-gradient(90deg, #FF8A34 0%, #F59E0B 50%, #FF8A34 100%)'
+                              ? 'linear-gradient(90deg, #3471de 0%, #4889ef 50%, #2453bc 100%)'
                               : domain.color === 'growth'
                                 ? 'linear-gradient(90deg, #22C55E 0%, #6CE9A6 50%, #22C55E 100%)'
                                 : domain.color === 'nova'
                                   ? 'linear-gradient(90deg, #8B5CF6 0%, #4F7CFF 50%, #8B5CF6 100%)'
                                   : domain.color === 'alert'
-                                    ? 'linear-gradient(90deg, #F59E0B 0%, #FF8A34 50%, #F59E0B 100%)'
+                                    ? 'linear-gradient(90deg, #4889ef 0%, #3471de 50%, #2453bc 100%)'
                                     : 'linear-gradient(90deg, #4F7CFF 0%, #22C55E 50%, #4F7CFF 100%)',
                         backgroundSize: '32px 100%',
                       }}
@@ -534,7 +535,7 @@ export default function SafetyLab() {
               </div>
 
               {assignments.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-white/60 border border-ink-100 text-center text-[12px] text-ink-400 leading-relaxed">
+                <div className="student-safety-empty p-4 rounded-2xl bg-white/60 border border-ink-100 text-left text-[13px] text-ink-500 leading-relaxed">
                   老师还没有布置安全考核。
                   <br />
                   可以先去下方各领域「参加考核」自主练习。
@@ -646,7 +647,7 @@ export default function SafetyLab() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.06 }}
                       onClick={() => setActiveTip(tip)}
-                      className="w-full p-3.5 rounded-xl bg-gradient-to-br from-white/80 to-ink-50/50 hover:from-mission-50/60 hover:to-nova-50/40 border border-ink-100/80 hover:border-mission-200 transition-all text-left group"
+                      className="student-safety-tip w-full p-3.5 rounded-xl bg-gradient-to-br from-white/80 to-ink-50/50 hover:from-mission-50/60 hover:to-nova-50/40 border border-ink-100/80 hover:border-mission-200 transition-all text-left group"
                     >
                       <div className="flex items-start gap-3">
                         <span className={cn(

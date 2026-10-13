@@ -1,6 +1,6 @@
 """SQLAlchemy 数据模型。
 
-字段命名尽量对齐前端 TypeScript 类型（src/data/mockData.ts），
+字段命名尽量对齐前端 TypeScript 类型（src/types/domain.ts），
 对于数组 / 嵌套对象采用 JSON 列存储，保证前后端数据结构一致、迁移零损耗。
 """
 
@@ -192,6 +192,8 @@ class ShowcaseItem(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     cover_image: Mapped[str] = mapped_column(String, default="")
     group_id: Mapped[str] = mapped_column(String, index=True)
+    author_user_id: Mapped[str] = mapped_column(String, default="")
+    demo_kind: Mapped[str] = mapped_column(String, default="")
     description: Mapped[str] = mapped_column(Text, default="")
     loves: Mapped[int] = mapped_column(Integer, default=0)
     loved_by: Mapped[list] = mapped_column(JSON, default=list)
@@ -204,6 +206,24 @@ class ShowcaseItem(Base):
     # 作品分类（展览馆顶部的筛选 tab）。上传表单一直让学生选，但从前端到模型都没有这个字段，
     # 选了等于白选、tab 也永远筛不出东西。存量作品回填为 photo。
     category: Mapped[str] = mapped_column(String, default="photo", index=True)
+
+
+class SafetyExamAttempt(Base):
+    """服务端保存题目快照与判分状态，客户端只收到无答案的题目。"""
+
+    __tablename__ = "safety_exam_attempts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    category: Mapped[str] = mapped_column(String)
+    assignment_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    questions: Mapped[list] = mapped_column(JSON, default=list)
+    pass_score: Mapped[int] = mapped_column(Integer, default=80)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    graded: Mapped[bool] = mapped_column(Boolean, default=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ClassMeta(Base):
@@ -266,3 +286,11 @@ class SafetyAssignment(Base):
     group_id: Mapped[str | None] = mapped_column(ForeignKey("groups.id"), index=True, nullable=True)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class ReviewQuestion(Base):
+    """投稿审核记录；新增独立表，保留现有题库和历史成绩。"""
+    __tablename__ = 'review_questions'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    submitted_by: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)

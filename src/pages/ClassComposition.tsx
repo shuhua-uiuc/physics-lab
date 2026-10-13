@@ -1,3 +1,17 @@
+import type { LucideIcon } from 'lucide-react';
+import { applyAvatarFallback } from '@/lib/imageFallback';
+/**
+ * 班级构成管理 —— 管理员视图
+ *
+ * 层级结构：班级 → 小组 → 成员
+ * 支持操作：
+ *  - 选择班级查看其下小组和成员
+ *  - 创建/重命名/删除小组
+ *  - 移动小组到其他班级
+ *  - 移动成员到其他小组
+ *  - 移除成员（设为未分组）
+ *  - 设置/取消组长
+ */
 /**
  * 班级构成管理 —— 管理员视图
  *
@@ -12,27 +26,10 @@
  */
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  School,
-  Users,
-  Plus,
-  Pencil,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  Crown,
-  UserMinus,
-  ArrowRightLeft,
-  X,
-  Loader2,
-  Building2,
-  Layers,
-  AlertTriangle,
-  CheckCircle2,
-} from 'lucide-react';
+import { School, Users, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Crown, UserMinus, ArrowRightLeft, X, Loader2, Layers, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { classesApi, groupsApi, usersApi, adminGroupsApi } from '@/lib/apiService';
-import type { SchoolClass, Group, User } from '@/data/mockData';
+import type { SchoolClass, Group, User } from '@/types';
 import { cn } from '@/lib/utils';
 
 export default function ClassComposition() {
@@ -141,8 +138,8 @@ export default function ClassComposition() {
       setNewGroupName('');
       setShowCreateGroup(false);
       pushToast(`小组「${name}」创建成功`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '创建失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '创建失败', 'error');
     }
   };
 
@@ -155,8 +152,8 @@ export default function ClassComposition() {
       setGroups((prev) => prev.map((x) => (x.id === g.id ? g : x)));
       setRenamingGroup(null);
       pushToast('小组重命名成功', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '重命名失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '重命名失败', 'error');
     }
   };
 
@@ -168,8 +165,8 @@ export default function ClassComposition() {
       setAllUsers((prev) => prev.filter((u) => u.groupId !== deletingGroupId));
       setDeletingGroupId(null);
       pushToast('小组已删除', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '删除失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '删除失败', 'error');
     }
   };
 
@@ -183,8 +180,8 @@ export default function ClassComposition() {
       setMovingGroup(null);
       setMoveTargetClass('');
       pushToast(`小组已移动到「${classes.find((c) => c.id === g.classId)?.name || ''}」`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '移动失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '移动失败', 'error');
     }
   };
 
@@ -197,8 +194,8 @@ export default function ClassComposition() {
       setMovingMember(null);
       setMoveTargetGroup('');
       pushToast(`成员已移动到新小组`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '移动失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '移动失败', 'error');
     }
   };
 
@@ -207,8 +204,8 @@ export default function ClassComposition() {
       const updated = await usersApi.assignGroup(userId, null, 'member');
       setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       pushToast(`已将「${userName}」移出小组`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '移除失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '移除失败', 'error');
     }
   };
 
@@ -223,8 +220,8 @@ export default function ClassComposition() {
         })
       );
       pushToast('已设置组长', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '设置失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '设置失败', 'error');
     }
   };
 
@@ -359,7 +356,7 @@ export default function ClassComposition() {
                               className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-mission-50/40 transition group"
                             >
                               <img
-                                src={m.avatar}
+                                src={m.avatar} onError={applyAvatarFallback}
                                 alt={m.name}
                                 className="w-8 h-8 rounded-lg object-cover bg-gradient-to-br from-mission-100 to-nova-100 shrink-0"
                               />
@@ -431,7 +428,7 @@ export default function ClassComposition() {
                 className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-mission-50/40 transition group"
               >
                 <img
-                  src={m.avatar}
+                  src={m.avatar} onError={applyAvatarFallback}
                   alt={m.name}
                   className="w-8 h-8 rounded-lg object-cover bg-gradient-to-br from-mission-100 to-nova-100 shrink-0"
                 />
@@ -582,7 +579,7 @@ function Modal({
   open: boolean;
   onClose: () => void;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (

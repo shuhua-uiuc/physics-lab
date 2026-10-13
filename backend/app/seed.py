@@ -189,79 +189,17 @@ def build_groups_and_users(db: Session) -> tuple[list[Group], list[User]]:
 
 
 def build_topics(db: Session) -> list[Topic]:
-    topics: list[Topic] = []
-    for i, title in enumerate(TOPIC_LIST):
-        outline = TOPIC_OUTLINES[title]
-        lines = [
-            f"# {title} - AI 自学路径",
-            "",
-            f'本主题涵盖高中物理中"{title}"的核心知识点。',
-            "",
-            "## 学习建议",
-            "1. 从基本概念出发，理解物理量的定义",
-            "2. 掌握核心公式及其适用条件",
-            "3. 结合生活实例加深理解",
-            "4. 通过例题和习题巩固解题技巧",
-            "",
-            "## 章节要点",
-        ]
-        for c in outline:
-            lines += [f"### {c['chapter']}", "- " + " / ".join(c["points"]), ""]
-        topics.append(Topic(id=f"topic-{i + 1}", title=title, outline=outline, ai_material="\n".join(lines)))
+    from .physics_curriculum import TOPICS
+    topics = [Topic(id=raw['id'], title=raw['title'], outline=raw['outline'], ai_material=raw['aiMaterial']) for raw in TOPICS]
     db.add_all(topics)
     return topics
 
 
 def build_questions(db: Session, topics: list[Topic]) -> list[Question]:
-    questions: list[Question] = []
-    q_idx = 1
-    types = ["single", "judge", "multiple"]
-    for t in topics:
-        kps = [p for c in t.outline for p in c["points"]]
-        for i, kp in enumerate(kps):
-            qtype = types[i % 3]
-            difficulty = (i % 3) + 1
-            if qtype == "single":
-                templates = [
-                    {
-                        "stem": f"关于{kp}的下列说法中，正确的是：",
-                        "opts": ["该概念仅适用于宏观低速场景", "在高中物理范围内有严格的数学表达", "与参考系选择无关", "属于标量运算不考虑方向"],
-                        "ans": 1,
-                    },
-                    {
-                        "stem": f"在{kp}相关实验中，下列操作或说法正确的是：",
-                        "opts": ["必须选用精度最高的仪器", "实验前无需校准", "多次测量取平均可减小系统误差", "数据记录保留任意位数越多越好"],
-                        "ans": 2,
-                    },
-                    {
-                        "stem": f"下列哪个公式或规律与{kp}直接相关？",
-                        "opts": ["F=ma", "PV=nRT", "E=mc²", "F=kx"],
-                        "ans": 0,
-                    },
-                ]
-                tpl = templates[i % 3]
-                stem, options, answer = tpl["stem"], tpl["opts"], tpl["ans"]
-            elif qtype == "multiple":
-                stem = f"关于{kp}，下列说法正确的是（多选）："
-                options = ["该知识点是高中物理核心考点", "可通过实验验证其正确性", "在任何条件下都严格成立", "与其他知识点存在密切联系"]
-                answer = [0, 1, 3]
-            else:
-                stem = f"{kp}是高中物理必须掌握的重要知识点。（判断对错）"
-                options = ["正确", "错误"]
-                answer = True
-            questions.append(
-                Question(
-                    id=f"q-{q_idx:03d}",
-                    type=qtype,
-                    stem=stem,
-                    options=options,
-                    answer=answer,
-                    knowledge_point=kp,
-                    difficulty=difficulty,
-                    topic_id=t.id,
-                )
-            )
-            q_idx += 1
+    from .physics_builtin import QUESTIONS, question_values
+    topic_ids = {topic.id for topic in topics}
+    questions = [Question(id=raw['id'], **question_values(raw))
+                 for raw in QUESTIONS if raw['topicId'] in topic_ids]
     db.add_all(questions)
     return questions
 
@@ -471,7 +409,17 @@ def ensure_safety_questions(db: Session) -> int:
     return len(build_safety_questions())
 
 
+def _validate_seed_credentials() -> None:
+    missing = [name for name in ('admin_password', 'teacher_password', 'student_default_password')
+               if not getattr(settings, name).strip() or getattr(settings, name) == 'change-me-via-env']
+    if missing:
+        raise ValueError('首次播种前请配置非占位符密码：' + ', '.join(name.upper() for name in missing))
+
+
 def seed(force: bool = False) -> None:
+    # force 也必须先验证，不能清空已有数据库后才发现配置不完整。
+    if force:
+        _validate_seed_credentials()
     init_db()
     db = SessionLocal()
     try:
@@ -488,6 +436,8 @@ def seed(force: bool = False) -> None:
         if db.query(Group).first() is not None:
             print("✅ 数据库已有数据，跳过种子灌入（如需重置请加 --force）。")
             return
+
+        _validate_seed_credentials()
 
         # 管理员账号
         db.add(
@@ -532,9 +482,9 @@ def seed(force: bool = False) -> None:
 
         db.commit()
         print("🎉 种子数据灌入完成！")
-        print(f"   - 管理员账号: admin / {settings.admin_password}")
-        print(f"   - 教师账号: teacher / {settings.teacher_password}")
-        print(f"   - 学生账号: u-01 ~ u-{len(users):02d} / {settings.student_default_password}（例：u-01 是张伟，高二(1)班 牛顿先锋队组长）")
+        print("   - 管理员账号: admin（密码取自配置，不写入日志）")
+        print("   - 教师账号: teacher（密码取自配置，不写入日志）")
+        print(f"   - 学生账号: u-01 ~ u-{len(users):02d}（密码取自配置，不写入日志）")
         print(f"   - {len(classes)} 个班级、{len(groups)} 个小组、{len(users)} 名学生、{len(topics)} 个主题")
     finally:
         db.close()
