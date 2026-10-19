@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..access import require_class_access, require_group_access
 from ..database import get_db
-from ..deps import get_current_user, require_teacher
+from ..deps import get_current_user, require_teacher, visible_class_id
 from ..models import Class, CoinTransaction, Group, User
 from ..schemas import (
     ClassOut,
@@ -17,21 +18,9 @@ from ..schemas import (
     UserOut,
 )
 from ..services import gen_id
+from ..user_views import user_to_out
 
 router = APIRouter(prefix="/api", tags=["groups"])
-
-
-def user_to_out(u: User) -> UserOut:
-    """模型 member_role -> 前端 role 字段。"""
-    return UserOut(
-        id=u.id,
-        name=u.name,
-        avatar=u.avatar,
-        class_id=u.class_id,
-        group_id=u.group_id,
-        role=u.member_role,
-        personal_coins=u.personal_coins,
-    )
 
 
 # ---------- Classes ----------
@@ -46,16 +35,22 @@ def list_classes(db: Session = Depends(get_db)):
 def list_groups(
     class_id: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
 ):
     q = db.query(Group)
+    scoped = visible_class_id(current)
+    if current.account_role == "student" and not scoped:
+        return []
+    if scoped:
+        q = q.filter(Group.class_id == scoped)
     if class_id:
         q = q.filter(Group.class_id == class_id)
     return q.all()
 
 
 @router.post("/groups", response_model=GroupOut)
-def create_group(payload: GroupCreate, db: Session = Depends(get_db), _: User = Depends(require_teacher)):
+def create_group(payload: GroupCreate, db: Session = Depends(get_db), current: User = Depends(require_teacher)):
+    require_class_access(current, payload.classId)
     if payload.classId and not db.get(Class, payload.classId):
         raise HTTPException(status_code=400, detail="所选班级不存在")
     group = Group(
@@ -77,10 +72,14 @@ def create_group(payload: GroupCreate, db: Session = Depends(get_db), _: User = 
 def reset_all_group_coins(
     payload: GroupCoinsReset,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     """批量重置所有小组能量币为目标值（基线重置，不产生逐组"扣除"流水）。"""
-    groups = db.query(Group).all()
+    query = db.query(Group)
+    scoped = visible_class_id(current)
+    if scoped:
+        query = query.filter(Group.class_id == scoped)
+    groups = query.all()
     for g in groups:
         g.total_coins = payload.targetCoins
     db.commit()
@@ -92,11 +91,12 @@ def rename_group(
     group_id: str,
     payload: GroupRename,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="小组不存在")
+    require_class_access(current, group.class_id)
     group.name = payload.name.strip()
     db.commit()
     db.refresh(group)
@@ -104,10 +104,11 @@ def rename_group(
 
 
 @router.delete("/groups/{group_id}")
-def delete_group(group_id: str, db: Session = Depends(get_db), _: User = Depends(require_teacher)):
+def delete_group(group_id: str, db: Session = Depends(get_db), current: User = Depends(require_teacher)):
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="小组不存在")
+    require_class_access(current, group.class_id)
     # 解绑成员（保留账号与班级归属），而非删除学生账号
     for m in db.query(User).filter(User.group_id == group_id).all():
         m.group_id = None
@@ -122,7 +123,7 @@ def update_contribution(
     group_id: str,
     payload: ContributionUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     total = sum(payload.ratioRecord.values())
     if total != 100:
@@ -130,6 +131,12 @@ def update_contribution(
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="小组不存在")
+    require_class_access(current, group.class_id)
+    if any(value < 0 or value > 100 for value in payload.ratioRecord.values()):
+        raise HTTPException(status_code=400, detail="贡献比例必须在 0 到 100 之间")
+    member_ids = {u.id for u in db.query(User).filter(User.group_id == group_id).all()}
+    if not set(payload.ratioRecord).issubset(member_ids):
+        raise HTTPException(status_code=400, detail="贡献者必须为本小组成员")
     group.contribution_ratio = dict(payload.ratioRecord)
     db.commit()
     db.refresh(group)
@@ -137,7 +144,8 @@ def update_contribution(
 
 
 @router.put("/groups/{group_id}/leader/{user_id}")
-def set_leader(group_id: str, user_id: str, db: Session = Depends(get_db), _: User = Depends(require_teacher)):
+def set_leader(group_id: str, user_id: str, db: Session = Depends(get_db), current: User = Depends(require_teacher)):
+    require_group_access(db, current, group_id)
     members = db.query(User).filter(User.group_id == group_id).all()
     if not members:
         raise HTTPException(status_code=404, detail="小组无成员")
@@ -163,9 +171,7 @@ def join_group(
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="小组不存在")
-    # 学生只能加入自己所在班级的小组
-    if current.class_id and group.class_id and group.class_id != current.class_id:
-        raise HTTPException(status_code=403, detail="只能加入本班的小组")
+    require_class_access(current, group.class_id)
     current.group_id = group_id
     # 补齐班级归属（防止历史数据缺失）
     if not current.class_id and group.class_id:
@@ -183,9 +189,14 @@ def list_users(
     class_id: str | None = None,
     unassigned: bool = False,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
 ):
     q = db.query(User).filter(User.account_role == "student")
+    scoped = visible_class_id(current)
+    if current.account_role == "student" and not scoped:
+        return []
+    if scoped:
+        q = q.filter(User.class_id == scoped)
     if class_id:
         q = q.filter(User.class_id == class_id)
     if unassigned:
@@ -200,7 +211,7 @@ def assign_user_group(
     user_id: str,
     payload: UserGroupAssign,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     """教师把学生分配/移动到某小组，或移出（groupId 为 null）。
 
@@ -209,12 +220,15 @@ def assign_user_group(
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="用户不存在")
+    require_class_access(current, u.class_id)
     if u.account_role != "student":
         raise HTTPException(status_code=400, detail="只能对学生分组")
     if payload.groupId:
         group = db.get(Group, payload.groupId)
         if not group:
             raise HTTPException(status_code=404, detail="目标小组不存在")
+        if current.account_role != "admin" and u.class_id and group.class_id != u.class_id:
+            raise HTTPException(status_code=403, detail="跨班调组仅管理员可操作")
         if payload.role == "leader":
             # 降级目标小组现任组长，避免出现两个组长
             for other in db.query(User).filter(
@@ -236,10 +250,15 @@ def assign_user_group(
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
-def get_user(user_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="用户不存在")
+    scoped = visible_class_id(current)
+    if current.account_role == "student" and (not scoped or u.class_id != scoped):
+        raise HTTPException(status_code=403, detail="只能查看本班学生")
+    if current.account_role == "teacher" and scoped and u.class_id != scoped:
+        raise HTTPException(status_code=403, detail="只能查看本班学生")
     return user_to_out(u)
 
 
@@ -250,11 +269,13 @@ def update_avatar(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    if current.account_role != "teacher" and current.id != user_id:
+    if current.account_role not in ("teacher", "admin") and current.id != user_id:
         raise HTTPException(status_code=403, detail="只能修改本人头像")
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if current.id != user_id:
+        require_class_access(current, u.class_id)
     u.avatar = payload.avatar
     db.commit()
     db.refresh(u)
@@ -266,12 +287,13 @@ def adjust_user_coins(
     user_id: str,
     payload: UserCoinAdjust,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     """教师调整某学生个人能量币，并在其所在小组的能量流水中记录该成员变动。"""
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="用户不存在")
+    require_class_access(current, u.class_id)
     if u.account_role != "student":
         raise HTTPException(status_code=400, detail="只能调整学生个人能量币")
     if payload.delta == 0:
@@ -305,7 +327,7 @@ def adjust_user_coins(
 def reset_user_earned(
     user_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_teacher),
+    current: User = Depends(require_teacher),
 ):
     """清零某学生的「累计获得」。
 
@@ -316,6 +338,7 @@ def reset_user_earned(
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="用户不存在")
+    require_class_access(current, u.class_id)
     if u.account_role != "student":
         raise HTTPException(status_code=400, detail="只能清零学生的累计获得")
     if not u.group_id:

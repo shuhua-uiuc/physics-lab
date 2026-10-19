@@ -33,8 +33,8 @@ import {
   groupsApi,
   SafetyAssignment,
 } from '@/lib/apiService';
-import type { SchoolClass, Group } from '@/data/mockData';
-import { Question, SafetyCategory } from '@/data/mockData';
+import type { SchoolClass, Group } from '@/types';
+import type { Question, SafetyCategory } from '@/types';
 import { categoryNameMap } from '@/data/safetyContent';
 import { cn } from '@/lib/utils';
 
@@ -335,14 +335,16 @@ export default function TeacherSafety() {
       setImportErr('请粘贴 JSON 内容或选择文件');
       return;
     }
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(importText);
     } catch {
       setImportErr('JSON 格式错误，请检查内容');
       return;
     }
-    const list = normalizeQuestions(Array.isArray(parsed) ? parsed : parsed.questions || []);
+    const questions = parsed && typeof parsed === 'object' && 'questions' in parsed ? parsed.questions : undefined;
+    const rawList: unknown[] = Array.isArray(parsed) ? parsed : Array.isArray(questions) ? questions : [];
+    const list = normalizeQuestions(rawList);
     if (list.length === 0) {
       setImportErr('未解析到有效题目（每题需包含 stem、options、safetyCategory）');
       return;
@@ -382,7 +384,7 @@ export default function TeacherSafety() {
   return (
     <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="glass-card p-5 md:p-7 flex items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-growth-400 to-growth-600 flex items-center justify-center text-white shadow-lg">
           <ShieldCheck size={28} strokeWidth={2.2} />
         </div>

@@ -1,3 +1,5 @@
+import TransferRequests from '@/components/coins/TransferRequests';
+import type { LucideIcon } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
@@ -7,29 +9,15 @@ import { useProjectStore } from '@/store/projectStore';
 import { useCoinStore } from '@/store/coinStore';
 import { useUIStore } from '@/store/uiStore';
 import RecruitDialog from '@/components/ui/RecruitDialog';
-import {
-  Swords,
-  Users,
-  Coins,
-  Send,
-  Trophy,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  Plus,
-  ChevronRight,
-  RefreshCw,
-  Eye,
-  Award,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Swords, Users, Coins, Send, Trophy, Clock, AlertCircle, X, Plus, Eye, Award } from 'lucide-react';
+
+import type { Challenge, Recruitment, Project, CoinTransaction } from '@/types';
 import { challengeRewardFor } from '@/lib/challengePricing';
 import { windowState, windowClosedMessage } from '@/lib/activityWindow';
 
 type TabKey = 'challenges' | 'recruitments' | 'transfers';
 
-const TABS: { key: TabKey; label: string; icon: any; color: string }[] = [
+const TABS: { key: TabKey; label: string; icon: LucideIcon; color: string }[] = [
   { key: 'challenges', label: '组间挑战', icon: Swords, color: 'text-energy-500' },
   { key: 'recruitments', label: '人才招募', icon: Users, color: 'text-physics-500' },
   { key: 'transfers', label: '能量转账', icon: Coins, color: 'text-lab-500' },
@@ -54,16 +42,15 @@ function CoinBadge({ amount, size = 'md' }: { amount: number; size?: 'sm' | 'md'
 
 const showSymbol = true;
 
-function ChallengeCard({ challenge, onAccept, onView }: { challenge: any; onAccept?: () => void; onView?: () => void }) {
-  const { getGroupById, getGroupUsers } = useGroupStore();
+function ChallengeCard({ challenge, onAccept, onView }: { challenge: Challenge; onAccept?: () => void; onView?: () => void }) {
+  const { getGroupById } = useGroupStore();
   const creatorGroup = getGroupById(challenge.creatorGroupId);
-  const creatorMembers = getGroupUsers(challenge.creatorGroupId);
   
   const isExpired = new Date(challenge.deadline) < new Date();
   
   return (
     <div className="rounded-[20px] bg-gradient-to-br from-white/95 via-white to-ink-50/50 border border-ink-100/60 p-5 hover:shadow-lg hover:border-cyan-200/60 transition-all duration-300">
-      <div className="flex items-start justify-between gap-4">
+      <div className="student-communication-card-heading flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`chip ${isExpired ? 'chip-risk' : 'chip-lab'}`}>
@@ -81,12 +68,12 @@ function ChallengeCard({ challenge, onAccept, onView }: { challenge: any; onAcce
             {challenge.questionIds?.length || 10} 道题目 · {challenge.submissions?.length || 0} 支队伍已参战
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] text-ink-400 mb-1">悬赏</p>
+        <div className="student-communication-reward">
+          <p className="text-xs text-ink-500">悬赏</p>
           <CoinBadge amount={challenge.reward} size="lg" />
         </div>
       </div>
-      <div className="flex items-center justify-between pt-3 border-t border-ink-100">
+      <div className="student-communication-card-footer flex items-center justify-between pt-3 border-t border-ink-100">
         <span className="text-xs text-ink-400 flex items-center gap-1">
           <Clock size={12} />
           截止: {new Date(challenge.deadline).toLocaleDateString('zh-CN')}
@@ -108,7 +95,7 @@ function ChallengeCard({ challenge, onAccept, onView }: { challenge: any; onAcce
   );
 }
 
-function RecruitmentCard({ recruitment, project, onBid, onResolve }: { recruitment: any; project?: any; onBid?: () => void; onResolve?: () => void }) {
+function RecruitmentCard({ recruitment, project, onBid, onResolve }: { recruitment: Recruitment; project?: Project; onBid?: () => void; onResolve?: () => void }) {
   const { getGroupById } = useGroupStore();
   const ownerGroup = getGroupById(project?.ownerGroupId);
   
@@ -117,7 +104,7 @@ function RecruitmentCard({ recruitment, project, onBid, onResolve }: { recruitme
   
   return (
     <div className="rounded-[20px] bg-gradient-to-br from-white/95 via-white to-ink-50/50 border border-ink-100/60 p-5 hover:shadow-lg hover:border-purple-200/60 transition-all duration-300">
-      <div className="flex items-start justify-between gap-4">
+      <div className="student-communication-card-heading flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`chip ${
@@ -146,12 +133,12 @@ function RecruitmentCard({ recruitment, project, onBid, onResolve }: { recruitme
             ))}
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] text-ink-400 mb-1">奖励</p>
+        <div className="student-communication-reward">
+          <p className="text-xs text-ink-500">奖励</p>
           <CoinBadge amount={recruitment.reward} size="lg" />
         </div>
       </div>
-      <div className="flex items-center justify-between pt-3 border-t border-ink-100">
+      <div className="student-communication-card-footer flex items-center justify-between pt-3 border-t border-ink-100">
         <span className="text-xs text-ink-400 flex items-center gap-1">
           <Clock size={12} />
           截止: {new Date(recruitment.deadline).toLocaleDateString('zh-CN')}
@@ -178,7 +165,7 @@ function RecruitmentCard({ recruitment, project, onBid, onResolve }: { recruitme
   );
 }
 
-function TransferHistoryItem({ tx }: { tx: any }) {
+function TransferHistoryItem({ tx }: { tx: CoinTransaction }) {
   const { getGroupById, getUserById } = useGroupStore();
   const group = getGroupById(tx.groupId);
   const user = tx.userId ? getUserById(tx.userId) : null;
@@ -222,8 +209,9 @@ export default function GroupCommunicator() {
   const { userId, groupId, role } = useAuthStore();
   const { groups, getGroupById, getGroupUsers, classMeta } = useGroupStore();
   const { challenges, createChallenge, getTopicQuestions, topics, questions: allQuestions } = useTheoryStore();
-  const { recruitments, projects, placeBid, assignRecruitment, resolveRecruitment } = useProjectStore();
+  const { recruitments, projects, placeBid, resolveRecruitment } = useProjectStore();
   const { coinTxs, transferCoins } = useCoinStore();
+  const myCoinTxs = coinTxs.filter((tx) => tx.groupId === groupId);
   const pushToast = useUIStore((s) => s.pushToast);
   
   const [tab, setTab] = useState<TabKey>('challenges');
@@ -323,7 +311,10 @@ export default function GroupCommunicator() {
     navigate(`/theory/challenge/${challengeId}/accept`);
   };
   
-  const handleTransfer = () => {
+  const [transferBusy, setTransferBusy] = useState(false);
+  const canTransfer = role === 'student' && isLeader;
+  const handleTransfer = async () => {
+    if (transferBusy || !canTransfer) return;
     if (!groupId) return;
     if (!win.transfer) return pushToast(windowClosedMessage('transfer'), 'warning');
     if (!transferForm.targetGroupId) return pushToast('请选择目标小组', 'warning');
@@ -331,17 +322,17 @@ export default function GroupCommunicator() {
     if (transferForm.amount <= 0) return pushToast('转账金额必须大于0', 'warning');
     if (myCoins < transferForm.amount) return pushToast('能量币不足', 'warning');
 
-    transferCoins(
-      groupId,
-      transferForm.targetGroupId,
-      transferForm.amount,
-      transferForm.note,
-      userId
-    );
-
-    pushToast('转账成功！', 'success');
-    setActiveDialog(null);
-    setTransferForm({ targetGroupId: '', amount: 0, note: '' });
+    setTransferBusy(true);
+    try {
+      await transferCoins(groupId, transferForm.targetGroupId, transferForm.amount, transferForm.note, userId);
+      pushToast('转账申请已提交，等待老师审核', 'success');
+      setActiveDialog(null);
+      setTransferForm({ targetGroupId: '', amount: 0, note: '' });
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : '提交失败，请重试', 'error');
+    } finally {
+      setTransferBusy(false);
+    }
   };
   
   const handlePlaceBid = () => {
@@ -376,8 +367,8 @@ export default function GroupCommunicator() {
   
   return (
     <div className="min-h-screen">
-      <div className="max-w-[1280px] mx-auto px-6 py-8 space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="max-w-[1280px] mx-auto space-y-6">
+        <div className="glass-card p-5 md:p-7 flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="page-title flex items-center gap-2">
               <Users size={28} className="text-mission-500" />
@@ -387,7 +378,7 @@ export default function GroupCommunicator() {
               与其他小组进行挑战对决、人才招募、能量币转账等互动
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="student-communication-identity flex items-center gap-4">
             <div className="glass-card rounded-xl px-4 py-2 flex items-center gap-2">
               <Coins size={18} className="text-energy-500" />
               <span className="font-bold text-ink-800">{myCoins}</span>
@@ -400,10 +391,11 @@ export default function GroupCommunicator() {
           </div>
         </div>
         
-        <div className="flex gap-2 p-1.5 bg-ink-100/80 rounded-xl w-fit">
+        <div className="student-inline-tabs flex gap-2 p-1.5 bg-ink-100/80 rounded-xl w-fit">
           {TABS.map((t) => (
             <button
               key={t.key}
+              aria-pressed={tab === t.key}
               onClick={() => setTab(t.key)}
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
                 tab === t.key
@@ -492,7 +484,7 @@ export default function GroupCommunicator() {
                     const mySubmission = c.submissions?.find(s => s.groupId === groupId);
                     return (
                       <div key={c.id} className="card-base card-hover p-5">
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="student-communication-card-heading flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2 flex-wrap">
                               <span className="chip chip-lab">已完成</span>
@@ -504,8 +496,8 @@ export default function GroupCommunicator() {
                               准确率: {mySubmission ? Math.round(mySubmission.accuracy * 100) : 0}%
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-[10px] text-ink-400 mb-1">获得奖励</p>
+                          <div className="student-communication-reward">
+                            <p className="text-xs text-ink-500">获得奖励</p>
                             <CoinBadge amount={mySubmission?.earned || 0} size="lg" />
                           </div>
                         </div>
@@ -603,29 +595,31 @@ export default function GroupCommunicator() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-lg font-semibold text-physics-800">能量币转账</h2>
-              <button
+              {canTransfer && <button
                 onClick={() => setActiveDialog('createTransfer')}
                 className="btn-primary text-sm"
               >
                 <Send size={16} />
-                发起转账
-              </button>
+                发起转账申请
+              </button>}
             </div>
 
+            <TransferRequests />
             <div className="rounded-[24px] bg-gradient-to-br from-nova-50/70 via-white/90 to-mission-50/50 border border-nova-100/50 p-6">
               <h3 className="font-serif font-semibold text-physics-800 mb-1 flex items-center gap-2">
                 <Coins size={18} className="text-nova-500" />
                 能量币流水
               </h3>
-              <p className="text-xs text-ink-500 mb-4">本组全部收支记录（含组间转账、挑战、招募、项目结算）</p>
-              {coinTxs.length === 0 ? (
+              <button type="button" className="btn-ghost-mission text-sm mb-3" onClick={() => navigate('/coins?view=ledger')}>查看全部流水与余额</button>
+              <p className="text-xs text-ink-500 mb-4">本组最近 10 笔收支记录（含组间转账、挑战、招募、项目结算）</p>
+              {myCoinTxs.length === 0 ? (
                 <div className="text-center py-8 text-ink-400">
                   <Coins size={32} className="mx-auto mb-2 opacity-40" />
                   <p className="text-sm">暂无交易记录</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {[...coinTxs]
+                  {[...myCoinTxs]
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 10)
                     .map((tx) => (
@@ -635,22 +629,21 @@ export default function GroupCommunicator() {
               )}
             </div>
 
-            <div className="rounded-[24px] bg-gradient-to-br from-energy-50/70 via-white/90 to-alert-50/50 border border-energy-100/50 p-6">
+            {canTransfer && <div className="rounded-[24px] bg-gradient-to-br from-energy-50/70 via-white/90 to-alert-50/50 border border-energy-100/50 p-6">
               <h3 className="font-serif font-semibold text-physics-800 mb-4 flex items-center gap-2">
                 <Send size={18} className="text-energy-500" />
-                快速转账
+                快速申请转账
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {otherGroups.map((g) => (
-                  <button
+                  <div
                     key={g.id}
-                    onClick={() => {
-                      setTransferForm({ targetGroupId: g.id, amount: 50, note: '' });
-                      setActiveDialog('createTransfer');
-                    }}
                     className="card-base card-hover p-4 text-left"
                   >
-                    <div className="flex items-center gap-3 mb-2">
+                    <button className="flex items-center gap-3 mb-2 w-full text-left" onClick={() => {
+                      setTransferForm({ targetGroupId: g.id, amount: 50, note: '' });
+                      setActiveDialog('createTransfer');
+                    }}>
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-physics-100 to-physics-50 flex items-center justify-center">
                         <Users size={18} className="text-physics-500" />
                       </div>
@@ -658,7 +651,7 @@ export default function GroupCommunicator() {
                         <p className="font-semibold text-ink-800 text-sm">{g.name}</p>
                         <p className="text-xs text-ink-500">{g.totalCoins} 能量币</p>
                       </div>
-                    </div>
+                    </button>
                     <div className="flex gap-1">
                       {[50, 100, 200].map((amount) => (
                         <button
@@ -674,10 +667,10 @@ export default function GroupCommunicator() {
                         </button>
                       ))}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
-            </div>
+            </div>}
 
           </div>
         )}
@@ -774,7 +767,7 @@ export default function GroupCommunicator() {
         </div>
       )}
       
-      {activeDialog === 'createTransfer' && (
+      {activeDialog === 'createTransfer' && canTransfer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-cardLifted w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-ink-100">
@@ -814,13 +807,14 @@ export default function GroupCommunicator() {
                   value={transferForm.note}
                   onChange={(e) => setTransferForm({ ...transferForm, note: e.target.value })}
                   className="input"
+                  maxLength={100}
                   placeholder="例如：友谊赛奖励"
                 />
               </div>
             </div>
             <div className="p-5 border-t border-ink-100 flex justify-end gap-3">
               <button onClick={() => setActiveDialog(null)} className="btn-ghost">取消</button>
-              <button onClick={handleTransfer} className="btn-primary">确认转账</button>
+              <button onClick={handleTransfer} disabled={transferBusy} className="btn-primary">{transferBusy ? '提交中…' : '提交老师审核'}</button>
             </div>
           </div>
         </div>

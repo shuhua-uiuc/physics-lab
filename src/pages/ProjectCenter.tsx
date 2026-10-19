@@ -1,33 +1,14 @@
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Rocket,
-  Search,
-  Filter,
-  FolderKanban,
-  Users,
-  Zap,
-  Clock,
-  ShieldCheck,
-  Wrench,
-  Lightbulb,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Snowflake,
-  ChevronRight,
-  ArrowRight,
-  CalendarDays,
-  Award,
-  User,
-  X,
-  Check,
-  ListTodo,
-} from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Rocket, Search, Filter, FolderKanban, Users, Zap, Clock, ShieldCheck, Wrench, Lightbulb, CheckCircle2, AlertTriangle, XCircle, Snowflake, ChevronRight, CalendarDays, Award, User, X, Check, ListTodo } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useGroupStore } from '@/store/groupStore';
+import { useAuthStore } from '@/store/authStore';
 import type { ProjectStatus, Project } from '@/types';
+import type { Group, User as StudentUser } from '@/types';
 import { cn } from '@/lib/utils';
 
 type MissionTab = 'overview' | 'tech' | 'milestones';
@@ -61,7 +42,7 @@ interface ProjectPlanet {
   milestonesData: { name: string; progress: number; status: 'done' | 'progress' | 'pending' }[];
 }
 
-const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; chip: any; planetGrad: string; halo: string }> = {
+const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; chip: string; planetGrad: string; halo: string }> = {
   planning: { label: '规划中', color: 'ink', chip: 'chip-ink', planetGrad: 'from-ink-300 via-ink-200 to-ink-100', halo: 'bg-ink-400/20' },
   progress: { label: '进行中', color: 'mission', chip: 'chip-mission', planetGrad: 'from-mission-400 via-mission-500 to-mission-600', halo: 'bg-mission-400/25' },
   review: { label: '评审中', color: 'alert', chip: 'chip-alert', planetGrad: 'from-alert-400 via-alert-500 to-energy-500', halo: 'bg-alert-400/25' },
@@ -70,7 +51,7 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; chip:
   frozen: { label: '已冻结', color: 'nova', chip: 'chip-nova', planetGrad: 'from-nova-400 via-nova-500 to-nova-600', halo: 'bg-nova-400/25' },
 };
 
-const STATUS_ICONS: Record<ProjectStatus, any> = {
+const STATUS_ICONS: Record<ProjectStatus, LucideIcon> = {
   planning: FolderKanban,
   progress: Rocket,
   review: Users,
@@ -82,11 +63,10 @@ const STATUS_ICONS: Record<ProjectStatus, any> = {
 const OWNER_COLORS = ['#4F7CFF', '#FF8A34', '#22C55E', '#8B5CF6', '#F59E0B', '#06B6D4'];
 
 /** 把真实项目映射成展示星球的形状；里程碑按真实进度派生。 */
-function buildPlanets(projects: Project[], groups: any[], users: any[]): ProjectPlanet[] {
-  return projects.map((p, idx) => {
+function buildPlanets(projects: Project[], groups: Group[], users: StudentUser[], userId: string | null, role: string | null): ProjectPlanet[] {
+  return projects.map((p) => {
     const g = groups.find((x) => x.id === p.ownerGroupId);
     const members = users.filter((u) => u.groupId === p.ownerGroupId);
-    const start = p.startDate instanceof Date ? p.startDate : new Date(p.startDate);
     const due = p.dueDate instanceof Date ? p.dueDate : new Date(p.dueDate);
     const now = Date.now();
     const dueInDays = Math.max(0, Math.ceil((due.getTime() - now) / 86400000));
@@ -112,7 +92,9 @@ function buildPlanets(projects: Project[], groups: any[], users: any[]): Project
       milestones: 5,
       description: p.results || p.title,
       equipmentList: p.equipmentList || [],
-      safetyPassed: Object.keys(p.safetyPassed || {}).length > 0,
+      safetyPassed: role === 'student'
+        ? Boolean(userId && p.safetyPassed?.[userId])
+        : Object.values(p.safetyPassed || {}).some(Boolean),
       groupName: g?.name || '未分组',
       difficulties: (p.difficulties || '')
         .split('\n')
@@ -127,8 +109,14 @@ function buildPlanets(projects: Project[], groups: any[], users: any[]): Project
 const STATUSES: ProjectStatus[] = ['planning', 'progress', 'review', 'done', 'failed', 'frozen'];
 
 export default function ProjectCenter() {
-  const [selectedId, setSelectedId] = useState('p1');
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const userId = useAuthStore((s) => s.userId);
+  const role = useAuthStore((s) => s.role);
+  const navigate = useNavigate();
+  const { id: projectId } = useParams<{ id: string }>();
+  const [selectedId, setSelectedId] = useState(projectId || 'p1');
+  useEffect(() => {
+    if (projectId) setSelectedId(projectId);
+  }, [projectId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('全部小组');
   const [statusFilters, setStatusFilters] = useState<ProjectStatus[]>([]);
@@ -139,7 +127,7 @@ export default function ProjectCenter() {
   const pushToast = useUIStore((s) => s.pushToast);
   const { projects, recruitments } = useProjectStore();
   const { groups, users } = useGroupStore();
-  const planets = useMemo(() => buildPlanets(projects, groups, users), [projects, groups, users]);
+  const planets = useMemo(() => buildPlanets(projects, groups, users, userId, role), [projects, groups, users, userId, role]);
   const projectRecruits = useMemo(() => recruitments.filter((r) => r.projectId === selectedId), [recruitments, selectedId]);
 
   const filteredPlanets = planets
@@ -155,6 +143,11 @@ export default function ProjectCenter() {
     });
 
   const selectedPlanet = planets.find((p) => p.id === selectedId) || planets[0];
+
+  const selectProject = (id: string) => {
+    setSelectedId(id);
+    navigate(`/projects/${id}`);
+  };
 
   const toggleStatus = (s: ProjectStatus) => {
     setStatusFilters((prev) =>
@@ -203,13 +196,13 @@ export default function ProjectCenter() {
 
   return (
     <div className="w-full space-y-6">
-      <section className="glass-card glass-card-hover p-7 rounded-[20px] relative overflow-hidden">
+      <section className="student-project-hero glass-card glass-card-hover p-7 rounded-[20px] relative overflow-hidden">
         <div className="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-gradient-to-br from-mission-300/25 via-nova-300/15 to-growth-300/10 blur-3xl pointer-events-none" />
         <div className="absolute -left-16 -bottom-20 w-72 h-72 rounded-full bg-gradient-to-br from-energy-300/15 via-mission-300/10 to-transparent blur-3xl pointer-events-none" />
 
-        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          <div className="lg:col-span-7">
-            <div className="flex items-center gap-4 mb-3">
+        <div className="student-project-hero-grid relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="student-project-hero-copy lg:col-span-7">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-3">
               <div className="relative">
                 <div className="absolute inset-0 rounded-2xl bg-mission-400/30 blur-lg animate-pulse" />
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-mission-500 via-mission-400 to-nova-500 flex items-center justify-center shadow-glowMission relative">
@@ -222,12 +215,12 @@ export default function ProjectCenter() {
                   MISSION CONTROL CENTER
                 </div>
                 <h1 className="text-3xl font-black tracking-tight">
-                  <span className="text-gradient-mission">Project Center</span>
-                  <span className="text-ink-800"> · 项目指挥中心</span>
+                  <span className="student-project-title text-ink-800">项目指挥中心</span>
+                  <span className="student-project-subtitle text-gradient-mission">Project Center</span>
                 </h1>
               </div>
             </div>
-            <p className="text-ink-600 font-medium leading-relaxed max-w-2xl">6 颗项目行星在各自轨道上运行，实时监控里程碑节点、技术风险与奖励进度。 每颗行星都代表一次通往星辰大海的远征。</p>
+            <p className="text-ink-600 font-medium leading-relaxed max-w-2xl">{planets.length} 个项目正在推进。查看里程碑、技术风险与奖励进度，选择项目进入任务中心。</p>
             <div className="flex flex-wrap gap-2.5 mt-5">
               <span className="chip-mission !py-1.5 !px-3">
                 <Rocket size={12} /> 进行中 {stats.progress}
@@ -244,7 +237,7 @@ export default function ProjectCenter() {
             </div>
           </div>
 
-          <div className="lg:col-span-5 flex justify-end gap-3">
+          <div className="student-project-stats lg:col-span-5 hidden lg:flex justify-end gap-3">
             {['planning', 'progress', 'review', 'done', 'frozen'].map((s, i) => {
               const stat = s as keyof typeof stats;
               const cfg = STATUS_CONFIG[s as ProjectStatus];
@@ -340,176 +333,44 @@ export default function ProjectCenter() {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <section className="lg:col-span-8 glass-card p-8 rounded-[20px] relative overflow-hidden min-h-[680px]">
-          <div className="absolute inset-0 bg-grid-fine opacity-30 pointer-events-none" />
-          <div className="relative grid grid-cols-3 gap-y-12 gap-x-8">
+        <section className="project-mission-board lg:col-span-8 glass-card rounded-[20px]">
+          <header className="project-board-heading">
+            <div><span className="mission-label">RESEARCH MISSIONS</span><h2>探索你的研究任务</h2><p>选择课题，查看器材、技术要点与下一步行动。</p></div>
+            <span className="project-board-count">{filteredPlanets.length} 个项目</span>
+          </header>
+          <div className="project-mission-grid">
             {filteredPlanets.map((planet, idx) => {
               const cfg = STATUS_CONFIG[planet.status];
               const StatusIcon = STATUS_ICONS[planet.status];
               const isSelected = selectedId === planet.id;
-              const isHovered = hoveredId === planet.id;
-              const showOverlay = isSelected || isHovered;
-
               return (
-                <motion.div
-                  key={planet.id}
-                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ delay: idx * 0.06 }}
-                  className="relative flex flex-col items-center"
-                  onMouseEnter={() => setHoveredId(planet.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  onClick={() => setSelectedId(planet.id)}
-                >
-                  <div className="relative w-[160px] h-[160px] flex items-center justify-center cursor-pointer group">
-                    <div className={cn('absolute inset-[-60px] rounded-full blur-3xl opacity-50', cfg.halo)} />
-
-                    <div className="absolute w-[190px] h-[190px] rounded-full border border-dashed opacity-50"
-                      style={{ borderColor: planet.status === 'progress' ? 'rgba(79,124,255,0.3)' : 'rgba(148,163,184,0.25)' }}>
-                      {planet.milestonesData.slice(0, 4).map((_, mi) => {
-                        const angle = (mi / 4) * Math.PI * 2 - Math.PI / 2;
-                        const rx = 95, ry = 95;
-                        return (
-                          <div
-                            key={mi}
-                            className="absolute w-2.5 h-2.5 rounded-full"
-                            style={{
-                              left: `calc(50% + ${Math.cos(angle) * rx}px - 5px)`,
-                              top: `calc(50% + ${Math.sin(angle) * ry}px - 5px)`,
-                              background: planet.milestonesData[mi].status === 'done'
-                                ? 'linear-gradient(135deg,#22C55E,#6CE9A6)'
-                                : planet.milestonesData[mi].status === 'progress'
-                                  ? 'linear-gradient(135deg,#4F7CFF,#8B5CF6)'
-                                  : 'rgba(148,163,184,0.4)',
-                              boxShadow: planet.milestonesData[mi].status !== 'pending'
-                                ? `0 0 8px ${planet.milestonesData[mi].status === 'done' ? 'rgba(34,197,94,0.6)' : 'rgba(79,124,255,0.6)'}`
-                                : 'none',
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-
-                    <div className="absolute w-[150px] h-[150px] rounded-full border-2 opacity-60"
-                      style={{ borderColor: planet.status === 'progress' ? 'rgba(79,124,255,0.25)' : 'rgba(148,163,184,0.2)' }} />
-
-                    <div
-                      className={cn(
-                        'relative w-[108px] h-[108px] rounded-full bg-gradient-to-br transition-all duration-500',
-                        cfg.planetGrad,
-                        showOverlay && 'scale-105',
-                        isSelected && 'ring-4 ring-white/80 shadow-[0_0_0_6px_rgba(79,124,255,0.18)]'
-                      )}
-                      style={{
-                        boxShadow: `inset -10px -14px 40px rgba(0,0,0,0.18), 0 20px 60px ${
-                          planet.status === 'progress' ? 'rgba(79,124,255,0.35)' :
-                          planet.status === 'done' ? 'rgba(34,197,94,0.3)' :
-                          planet.status === 'failed' ? 'rgba(240,68,56,0.3)' :
-                          planet.status === 'frozen' ? 'rgba(139,92,246,0.3)' :
-                          planet.status === 'review' ? 'rgba(245,158,11,0.3)' :
-                          'rgba(148,163,184,0.25)'
-                        }`,
-                      }}
-                    >
-                      <div className="absolute inset-0 rounded-full opacity-40 bg-gradient-to-br from-white/60 via-transparent to-transparent" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <StatusIcon size={30} className="text-white/95 drop-shadow-lg" strokeWidth={2.2} />
-                      </div>
-                      <div className="absolute w-full h-full rounded-full" style={{
-                        background: 'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 45%)',
-                      }} />
-                    </div>
-
-                    {showOverlay && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className="absolute -bottom-4 left-1/2 -translate-x-1/2 z-20 w-[280px]"
-                        style={{ transform: 'translateX(-50%) translateY(100%)' }}
-                      >
-                        <div className="glass-card !p-4 !rounded-2xl shadow-glowMission">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={cn(cfg.chip, '!py-0.5 !text-[10px]')}>{cfg.label}</span>
-                                <span className="chip-energy !py-0.5 !text-[10px]">
-                                  +{planet.rewardCoins}⚡
-                                </span>
-                              </div>
-                              <h4 className="font-black text-ink-800 text-sm leading-tight">{planet.title}</h4>
-                            </div>
-                            {planet.dueInDays > 0 && (
-                              <span className="chip-alert !py-0.5 !text-[10px] shrink-0">
-                                剩 {planet.dueInDays} 天
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-ink-500 leading-relaxed line-clamp-2 mb-3">
-                            {planet.description}
-                          </p>
-                          <div className="flex items-center justify-between">
-                            <div className="flex -space-x-2">
-                              {planet.owners.slice(0, 3).map((o, i) => (
-                                <div
-                                  key={i}
-                                  className="w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[10px] font-black text-white"
-                                  style={{ background: o.color }}
-                                >
-                                  {o.name}
-                                </div>
-                              ))}
-                            </div>
-                            <button
-                              className="btn-mission !py-1.5 !px-3 !text-[11px] !rounded-xl"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedId(planet.id);
-                                setMissionTab('milestones');
-                                setTimeout(() => {
-                                  const el = document.getElementById('mission-focus-panel');
-                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }, 50);
-                                pushToast?.(`已切换到《${planet.title}》任务中心`, 'info');
-                              }}
-                            >
-                              进入任务中心 <ChevronRight size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
+                <button key={planet.id} type="button" aria-pressed={isSelected}
+                  className={cn('project-mission-card', isSelected && 'is-selected')}
+                  onClick={() => selectProject(planet.id)}>
+                  <div className="project-mission-art" aria-hidden="true">
+                    <svg viewBox="0 0 320 130" fill="none">
+                      <path className="mission-signal" d={planet.topic.includes('光') ? 'M0 100 L125 65 L155 20 L190 105 L125 65 L320 35 M125 65 L320 70 M125 65 L320 105' : planet.topic.includes('电') ? 'M0 65 H65 V25 H120 V105 H175 V25 H230 V65 H320' : 'M0 65 Q40 0 80 65 T160 65 T240 65 T320 65'} />
+                      <path d="M0 115H320M0 15H320M30 0V130M290 0V130" stroke="currentColor" opacity=".12" />
+                      <circle className="mission-particle" cx="65" cy="65" r="5" fill="currentColor" />
+                    </svg>
+                    <span className="project-art-index">MISSION / {String(idx + 1).padStart(2, '0')}</span>
+                    <span className="project-art-icon"><StatusIcon size={24} /></span>
+                    <span className="project-art-topic">{planet.topic}</span>
                   </div>
-
-                  <div className="mt-6 text-center">
-                    <div className="inline-block mb-1.5">
-                      <span className={cn(cfg.chip, '!py-0.5 !text-[10px]')}>{planet.topic}</span>
-                    </div>
-                    <h3 className={cn(
-                      'font-black text-sm leading-tight max-w-[160px] mx-auto',
-                      isSelected ? 'text-mission-700' : 'text-ink-800'
-                    )}>
-                      {planet.title}
-                    </h3>
-                    <div className="mt-2 h-1.5 w-28 mx-auto rounded-full bg-ink-100 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${planet.progress}%` }}
-                        transition={{ duration: 0.8, delay: idx * 0.05 }}
-                        className={cn('h-full rounded-full bg-gradient-to-r',
-                          planet.status === 'done' ? 'from-growth-400 to-growth-500' :
-                          planet.status === 'failed' ? 'from-danger-400 to-danger-500' :
-                          planet.status === 'frozen' ? 'from-nova-400 to-nova-500' :
-                          planet.status === 'review' ? 'from-alert-400 to-energy-500' :
-                          'from-mission-400 to-nova-500'
-                        )}
-                      />
-                    </div>
-                    <div className="text-[10px] font-bold text-ink-500 mt-1 tabular-nums">{planet.progress}%</div>
+                  <div className="project-mission-body">
+                    <div className="project-mission-meta"><span className={cfg.chip}>{cfg.label}</span><span><Zap size={13} /> +{planet.rewardCoins}</span></div>
+                    <h3>{planet.title}</h3>
+                    <p className="project-mission-description">{planet.description || '从提出问题到实验验证，开启你的物理研究。'}</p>
+                    <div className="project-mission-progress"><span>研究进度</span><strong>{planet.progress}%</strong></div>
+                    <div className="project-mission-track"><span style={{ width: `${planet.progress}%` }} /></div>
+                    <div className="project-mission-footer"><span><Users size={14} />{planet.groupName}</span><ChevronRight size={18} /></div>
+                    <div className="project-mission-facts"><span><Wrench size={12} /> 器材 {planet.equipmentList.length} 项</span><span><ShieldCheck size={12} />{planet.safetyPassed ? '安全已通过' : '待安全认证'}</span></div>
                   </div>
-                </motion.div>
+                </button>
               );
             })}
           </div>
+          {filteredPlanets.length === 0 && <div className="project-board-empty"><Search size={30} /><h3>没有匹配的项目</h3><p>试试其他关键词，或调整小组与状态筛选。</p></div>}
         </section>
 
         <aside id="mission-focus-panel" className="lg:col-span-4 space-y-4 scroll-mt-24">

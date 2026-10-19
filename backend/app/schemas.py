@@ -62,6 +62,16 @@ class SafetyRecordCreate(BaseModel):
     assignmentId: str | None = None
 
 
+class SafetyExamStart(BaseModel):
+    category: str
+    assignmentId: str | None = None
+    projectId: str | None = None
+
+
+class SafetyExamSubmit(BaseModel):
+    answers: dict[str, Any]
+
+
 class SafetyRecordOut(BaseModel):
     id: str
     category: str
@@ -184,7 +194,7 @@ class GroupOut(CamelModel):
 
 class GroupCreate(BaseModel):
     name: str
-    initialCoins: int = 500
+    initialCoins: int = Field(default=500, ge=0)
     classId: str | None = None
 
 
@@ -225,12 +235,17 @@ class CoinDelta(BaseModel):
 
 
 class CoinTransfer(CamelModel):
-    """组间能量币转账：两笔交易共享同一 ref_id，由后端原子记账。"""
+    """组长发起转账申请，教师审核通过后原子记账。"""
 
     source_group_id: str
     target_group_id: str
     amount: int = Field(ge=1)
     note: str = Field(default="", max_length=100)
+
+
+class CoinTransferReview(CamelModel):
+    decision: Literal["approve", "reject"]
+    note: str = Field(default="", max_length=200)
 
 
 # ---------- Topic / Question ----------
@@ -246,7 +261,7 @@ class QuestionOut(CamelModel):
     type: str
     stem: str
     options: list[str]
-    answer: Any
+    answer: Any = None
     knowledge_point: str
     difficulty: int
     topic_id: str | None = None
@@ -350,7 +365,7 @@ class ProjectCreate(BaseModel):
     difficulties: str | None = ""
     equipmentList: list[EquipmentItem] = []
     dueDate: datetime | None = None
-    rewardCoins: int | None = 200
+    rewardCoins: int | None = Field(default=200, ge=0)
     # 教师/管理员代建时指定所属小组；学生创建由后端绑定本人小组
     ownerGroupId: str | None = None
 
@@ -370,12 +385,12 @@ class ProjectUpdate(BaseModel):
     results: str | None = None
     photos: list[str] | None = None
     rewardCoins: int | None = Field(default=None, ge=0)
-    status: str | None = None
+    status: Literal["planning", "progress", "review", "done", "failed", "frozen"] | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
 
 
 class ProjectStatusUpdate(BaseModel):
-    status: str
+    status: Literal["planning", "progress", "review", "done", "failed", "frozen"]
 
 
 class ProjectProgressUpdate(BaseModel):
@@ -449,6 +464,7 @@ ShowcaseCategory = Literal["photo", "video", "paper", "model", "award"]
 
 
 class ShowcaseCreate(BaseModel):
+    demoKind: Literal["", "optics", "motor"] = ""
     projectId: str | None = ""
     title: str
     coverImage: str
@@ -458,6 +474,8 @@ class ShowcaseCreate(BaseModel):
 
 
 class ShowcaseOut(CamelModel):
+    author_user_id: str = ""
+    demo_kind: str = ""
     id: str
     project_id: str
     title: str

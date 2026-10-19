@@ -1,48 +1,31 @@
+import type { LucideIcon } from 'lucide-react';
+import { applyAvatarFallback } from '@/lib/imageFallback';
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
-  Users,
-  School,
   Plus,
-  Pencil,
-  Trash2,
   KeyRound,
   X,
   AlertTriangle,
   CheckCircle2,
   Loader2,
   GraduationCap,
-  Building2,
-  Layers,
-  ClipboardList,
+  Trash2,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
-import { classesApi, teachersApi } from '@/lib/apiService';
-import type { SchoolClass } from '@/data/mockData';
+import { teachersApi } from '@/lib/apiService';
+import type { TeacherInfo } from '@/lib/apiService';
 import { cn } from '@/lib/utils';
-import ClassComposition from './ClassComposition';
-import StudentRoster from './StudentRoster';
 
-interface TeacherInfo {
-  id: string;
-  username: string;
-  name: string;
-  avatar: string;
-}
-
-type Tab = 'composition' | 'roster' | 'classes' | 'teachers';
-
+/**
+ * 管理员独有的教师账号管理。
+ *
+ * 班级、学生、NFC 等日常管理已经下放到教师端；这里只保留
+ * 管理员独占的账号能力，避免与教师页面重复。
+ */
 export default function AdminConsole() {
   const pushToast = useUIStore((s) => s.pushToast);
-  const [tab, setTab] = useState<Tab>('classes');
-
-  // ---- 班级管理 ----
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [loadingClasses, setLoadingClasses] = useState(true);
-  const [newClassName, setNewClassName] = useState('');
-  const [editingClass, setEditingClass] = useState<{ id: string; name: string } | null>(null);
-  const [deleteClassId, setDeleteClassId] = useState<string | null>(null);
 
   // ---- 教师管理 ----
   const [teachers, setTeachers] = useState<TeacherInfo[]>([]);
@@ -52,18 +35,6 @@ export default function AdminConsole() {
   const [deleteTeacherId, setDeleteTeacherId] = useState<string | null>(null);
   const [resetTeacher, setResetTeacher] = useState<{ id: string; name: string } | null>(null);
   const [resetPassword, setResetPassword] = useState('');
-
-  const loadClasses = useCallback(async () => {
-    setLoadingClasses(true);
-    try {
-      const list = await classesApi.list();
-      setClasses(list);
-    } catch {
-      pushToast('班级列表加载失败', 'error');
-    } finally {
-      setLoadingClasses(false);
-    }
-  }, [pushToast]);
 
   const loadTeachers = useCallback(async () => {
     setLoadingTeachers(true);
@@ -78,52 +49,8 @@ export default function AdminConsole() {
   }, [pushToast]);
 
   useEffect(() => {
-    loadClasses();
-  }, [loadClasses]);
-
-  useEffect(() => {
-    if (tab === 'teachers') loadTeachers();
-  }, [tab, loadTeachers]);
-
-  // ---- 班级操作 ----
-  const handleCreateClass = async () => {
-    const name = newClassName.trim();
-    if (!name) return;
-    try {
-      const cls = await classesApi.create(name);
-      setClasses((prev) => [...prev, cls]);
-      setNewClassName('');
-      pushToast(`班级「${name}」创建成功`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '创建失败', 'error');
-    }
-  };
-
-  const handleRenameClass = async () => {
-    if (!editingClass) return;
-    const name = editingClass.name.trim();
-    if (!name) return;
-    try {
-      const cls = await classesApi.rename(editingClass.id, name);
-      setClasses((prev) => prev.map((c) => (c.id === cls.id ? cls : c)));
-      setEditingClass(null);
-      pushToast('班级重命名成功', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '重命名失败', 'error');
-    }
-  };
-
-  const handleDeleteClass = async () => {
-    if (!deleteClassId) return;
-    try {
-      await classesApi.remove(deleteClassId);
-      setClasses((prev) => prev.filter((c) => c.id !== deleteClassId));
-      setDeleteClassId(null);
-      pushToast('班级已删除', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '删除失败', 'error');
-    }
-  };
+    loadTeachers();
+  }, [loadTeachers]);
 
   // ---- 教师操作 ----
   const handleCreateTeacher = async () => {
@@ -138,8 +65,8 @@ export default function AdminConsole() {
       setTeacherForm({ username: '', password: '', name: '' });
       setShowTeacherForm(false);
       pushToast(`教师「${t.name}」创建成功`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '创建失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '创建失败', 'error');
     }
   };
 
@@ -150,8 +77,8 @@ export default function AdminConsole() {
       setTeachers((prev) => prev.filter((t) => t.id !== deleteTeacherId));
       setDeleteTeacherId(null);
       pushToast('教师账号已删除', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '删除失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '删除失败', 'error');
     }
   };
 
@@ -166,241 +93,97 @@ export default function AdminConsole() {
       pushToast(`教师「${resetTeacher.name}」密码已重置`, 'success');
       setResetTeacher(null);
       setResetPassword('');
-    } catch (err: any) {
-      pushToast(err?.message || '重置失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '重置失败', 'error');
     }
   };
 
   return (
     <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="mission-page-intro flex items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-ink-700 via-mission-700 to-nova-700 flex items-center justify-center text-white shadow-lg">
           <Shield size={28} strokeWidth={2.2} />
         </div>
         <div>
-          <span className="chip-nova !py-0.5 !px-2 !text-[10px]">SUPER ADMIN</span>
-          <h1 className="mt-1 text-[24px] font-extrabold text-ink-900 tracking-tight">管理控制台</h1>
-          <p className="text-[13px] text-ink-500 font-medium">班级管理 · 教师账号 · 系统配置</p>
+          <span className="chip-nova !py-0.5 !px-2 !text-[10px]">ADMIN</span>
+          <h1 className="mt-1 text-[24px] font-extrabold text-ink-900 tracking-tight">教师账号管理</h1>
+          <p className="text-[13px] text-ink-500 font-medium">
+            管理员独占：新增、删除教师账号并重置密码。班级与教学管理请使用教师端。
+          </p>
         </div>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex items-center gap-2">
-        {[
-          { key: 'composition' as Tab, label: '班级构成', icon: Layers },
-          { key: 'roster' as Tab, label: '学生名单', icon: ClipboardList },
-          { key: 'classes' as Tab, label: '班级管理', icon: School },
-          { key: 'teachers' as Tab, label: '教师管理', icon: Users },
-        ].map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] font-semibold transition-all',
-                active
-                  ? 'bg-gradient-to-br from-mission-500 to-nova-600 text-white shadow-glowMission'
-                  : 'glass-card text-ink-500 hover:text-mission-600'
-              )}
-            >
-              <Icon size={16} />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="space-y-5">
+        {/* Create bar */}
+        <div className="glass-card p-5 rounded-[22px] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <GraduationCap size={20} className="text-mission-500" />
+            <span className="text-[14px] font-semibold text-ink-700">
+              教师账号 ({teachers.length})
+            </span>
+          </div>
+          <button
+            onClick={() => setShowTeacherForm(true)}
+            className="btn-mission inline-flex items-center gap-2 !py-2.5"
+          >
+            <Plus size={16} /> 新增教师
+          </button>
+        </div>
+
+        {/* Teacher list */}
+        {loadingTeachers ? (
+          <div className="glass-card p-10 rounded-[22px] text-center text-ink-400 flex items-center justify-center gap-2">
+            <Loader2 size={20} className="animate-spin" /> 加载中…
+          </div>
+        ) : teachers.length === 0 ? (
+          <div className="glass-card p-10 rounded-[22px] text-center text-ink-400">
+            暂无教师账号
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {teachers.map((t) => (
+              <div
+                key={t.id}
+                className="glass-card glass-card-hover p-4 rounded-[20px] flex items-center gap-4"
+              >
+                <img
+                  src={t.avatar} onError={applyAvatarFallback}
+                  alt={t.name}
+                  className="w-11 h-11 rounded-xl object-cover bg-gradient-to-br from-mission-100 to-nova-100"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[15px] font-bold text-ink-800">{t.name}</div>
+                  <div className="text-[11px] text-ink-400 font-mono mt-0.5">
+                    @{t.username} · {t.id}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      setResetTeacher({ id: t.id, name: t.name });
+                      setResetPassword('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card glass-card-hover text-[12px] font-semibold text-ink-600 hover:text-energy-600"
+                    title="重置密码"
+                  >
+                    <KeyRound size={14} /> 重置密码
+                  </button>
+                  <button
+                    onClick={() => setDeleteTeacherId(t.id)}
+                    className="w-9 h-9 rounded-xl glass-card glass-card-hover flex items-center justify-center text-ink-500 hover:text-danger-600"
+                    title="删除"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.2 }}
-        >
-          {/* ========== 班级构成（小组与成员管理） ========== */}
-          {tab === 'composition' && <ClassComposition />}
-
-          {/* ========== 学生名单 ========== */}
-          {tab === 'roster' && <StudentRoster />}
-
-          {/* ========== 班级管理 ========== */}
-          {tab === 'classes' && (
-            <div className="space-y-5">
-              {/* Create bar */}
-              <div className="glass-card p-5 rounded-[22px] flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                  <Plus size={18} className="text-mission-500 shrink-0" />
-                  <input
-                    type="text"
-                    value={newClassName}
-                    onChange={(e) => setNewClassName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateClass()}
-                    className="input-field flex-1"
-                    placeholder="输入新班级名称，如：高三(3)班"
-                  />
-                </div>
-                <button
-                  onClick={handleCreateClass}
-                  disabled={!newClassName.trim()}
-                  className="btn-mission disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2 !py-2.5"
-                >
-                  <Plus size={16} /> 创建班级
-                </button>
-              </div>
-
-              {/* Class list */}
-              {loadingClasses ? (
-                <div className="glass-card p-10 rounded-[22px] text-center text-ink-400 flex items-center justify-center gap-2">
-                  <Loader2 size={20} className="animate-spin" /> 加载中…
-                </div>
-              ) : classes.length === 0 ? (
-                <div className="glass-card p-10 rounded-[22px] text-center text-ink-400">
-                  暂无班级，请创建第一个班级
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {classes.map((cls) => (
-                    <div
-                      key={cls.id}
-                      className="glass-card glass-card-hover p-5 rounded-[22px] flex items-center gap-4"
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shadow-lg shrink-0">
-                        <Building2 size={22} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[15px] font-bold text-ink-800 truncate">{cls.name}</div>
-                        <div className="text-[11px] text-ink-400 font-mono mt-0.5">{cls.id}</div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => setEditingClass({ id: cls.id, name: cls.name })}
-                          className="w-9 h-9 rounded-xl glass-card glass-card-hover flex items-center justify-center text-ink-500 hover:text-mission-600"
-                          title="重命名"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteClassId(cls.id)}
-                          className="w-9 h-9 rounded-xl glass-card glass-card-hover flex items-center justify-center text-ink-500 hover:text-danger-600"
-                          title="删除"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ========== 教师管理 ========== */}
-          {tab === 'teachers' && (
-            <div className="space-y-5">
-              {/* Create bar */}
-              <div className="glass-card p-5 rounded-[22px] flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <GraduationCap size={20} className="text-mission-500" />
-                  <span className="text-[14px] font-semibold text-ink-700">
-                    教师账号 ({teachers.length})
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowTeacherForm(true)}
-                  className="btn-mission inline-flex items-center gap-2 !py-2.5"
-                >
-                  <Plus size={16} /> 新增教师
-                </button>
-              </div>
-
-              {/* Teacher list */}
-              {loadingTeachers ? (
-                <div className="glass-card p-10 rounded-[22px] text-center text-ink-400 flex items-center justify-center gap-2">
-                  <Loader2 size={20} className="animate-spin" /> 加载中…
-                </div>
-              ) : teachers.length === 0 ? (
-                <div className="glass-card p-10 rounded-[22px] text-center text-ink-400">
-                  暂无教师账号
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {teachers.map((t) => (
-                    <div
-                      key={t.id}
-                      className="glass-card glass-card-hover p-4 rounded-[20px] flex items-center gap-4"
-                    >
-                      <img
-                        src={t.avatar}
-                        alt={t.name}
-                        className="w-11 h-11 rounded-xl object-cover bg-gradient-to-br from-mission-100 to-nova-100"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[15px] font-bold text-ink-800">{t.name}</div>
-                        <div className="text-[11px] text-ink-400 font-mono mt-0.5">
-                          @{t.username} · {t.id}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => {
-                            setResetTeacher({ id: t.id, name: t.name });
-                            setResetPassword('');
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card glass-card-hover text-[12px] font-semibold text-ink-600 hover:text-energy-600"
-                          title="重置密码"
-                        >
-                          <KeyRound size={14} /> 重置密码
-                        </button>
-                        <button
-                          onClick={() => setDeleteTeacherId(t.id)}
-                          className="w-9 h-9 rounded-xl glass-card glass-card-hover flex items-center justify-center text-ink-500 hover:text-danger-600"
-                          title="删除"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </motion.div>
-      </AnimatePresence>
 
       {/* ===== Modals ===== */}
-
-      {/* Rename class modal */}
-      <Modal open={!!editingClass} onClose={() => setEditingClass(null)} title="重命名班级" icon={Pencil}>
-        <input
-          type="text"
-          value={editingClass?.name || ''}
-          onChange={(e) => setEditingClass((prev) => (prev ? { ...prev, name: e.target.value } : null))}
-          className="input-field"
-          placeholder="班级名称"
-          autoFocus
-          onKeyDown={(e) => e.key === 'Enter' && handleRenameClass()}
-        />
-        <div className="flex gap-2 mt-4">
-          <button className="btn-ghost-mission flex-1" onClick={() => setEditingClass(null)}>取消</button>
-          <button className="btn-mission flex-1" onClick={handleRenameClass}>确认</button>
-        </div>
-      </Modal>
-
-      {/* Delete class confirm */}
-      <ConfirmModal
-        open={!!deleteClassId}
-        onClose={() => setDeleteClassId(null)}
-        onConfirm={handleDeleteClass}
-        title="删除班级"
-        message="删除班级将同时删除该班下所有小组、学生和金币流水，此操作不可撤销。"
-        confirmText="确认删除"
-        danger
-      />
 
       {/* Create teacher modal */}
       <Modal open={showTeacherForm} onClose={() => setShowTeacherForm(false)} title="新增教师账号" icon={GraduationCap}>
@@ -491,7 +274,7 @@ function Modal({
   open: boolean;
   onClose: () => void;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (

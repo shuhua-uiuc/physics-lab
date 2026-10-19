@@ -1,41 +1,21 @@
+import TransferRequests from '@/components/coins/TransferRequests';
+import type { LucideIcon } from 'lucide-react';
+import { applyAvatarFallback } from '@/lib/imageFallback';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Rocket,
-  Users,
-  Zap,
-  Crown,
-  Pencil,
-  Trash2,
-  Plus,
-  Minus,
-  RefreshCw,
-  AlertTriangle,
-  X,
-  Trophy,
-  Sparkles,
-  GripVertical,
-  CheckCircle2,
-  Coins,
-  UserPlus,
-  Settings,
-  Shield,
-  UserMinus,
-  LogIn,
-  RotateCcw,
-} from 'lucide-react';
-import MissionShell from '@/components/layout/MissionShell';
+import { Rocket, Users, Zap, Crown, Pencil, Trash2, Plus, Minus, RefreshCw, AlertTriangle, X, Trophy, Sparkles, GripVertical, CheckCircle2, Coins, UserPlus, Settings, Shield, UserMinus, RotateCcw, ArrowRightLeft } from 'lucide-react';
 import { useGroupStore } from '@/store/groupStore';
 import { useCoinStore } from '@/store/coinStore';
 import { windowState, formatCloseTime } from '@/lib/activityWindow';
-import { classesApi, usersApi } from '@/lib/apiService';
+import { adminGroupsApi, classesApi, usersApi } from '@/lib/apiService';
+import { bootstrapFromApi } from '@/lib/bootstrap';
 import { syncToApi } from '@/lib/syncQueue';
 import { cn } from '@/lib/utils';
 import { AWARD_REASONS, DEDUCT_REASONS } from '@/lib/coinReasons';
 import AvatarStack from '@/components/ui/AvatarStack';
-import type { User, SchoolClass } from '@/data/mockData';
+import type { User, SchoolClass } from '@/types';
 
-type DialogKind = 'reset' | 'new' | 'coins' | 'rename' | 'members' | 'disband' | null;
+type DialogKind = 'reset' | 'new' | 'coins' | 'rename' | 'members' | 'disband' | 'move' | null;
 
 /**
  * 调币理由选择器：预设按钮 + 可自由填写。
@@ -182,6 +162,7 @@ export default function TeacherGroups() {
   };
   const [resetConfirmStep, setResetConfirmStep] = useState(0);
   const [renameInput, setRenameInput] = useState('');
+  const [moveTargetClass, setMoveTargetClass] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
   const [coinAmount, setCoinAmount] = useState(100);
@@ -415,8 +396,23 @@ export default function TeacherGroups() {
     setDialog('members');
   };
 
+  const doMoveClass = async () => {
+    if (!activeGroup || !moveTargetClass) return;
+    try {
+      await adminGroupsApi.moveClass(activeGroup.id, moveTargetClass);
+      const targetName = classes.find((c) => c.id === moveTargetClass)?.name || moveTargetClass;
+      flashToast(`✔ ${activeGroup.name} 已换到 ${targetName}`);
+      setDialog(null);
+      setMoveTargetClass('');
+      setActiveGroupId(null);
+      await bootstrapFromApi(true);
+    } catch (err) {
+      flashToast(err instanceof Error ? err.message : '换班失败');
+    }
+  };
+
   return (
-    <MissionShell>
+    <>
       <div className="space-y-6">
         <motion.section
           initial={{ opacity: 0, y: 18 }}
@@ -449,13 +445,15 @@ export default function TeacherGroups() {
                 <b className="text-alert-600">{unassigned.length} 名</b> 待分配
               </p>
             </div>
-            <div className="flex items-center gap-4 shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full lg:w-auto [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
               <FleetStat label="总小组" val={groups.length} unit="个" grad="from-mission-400 to-nova-500" icon={Rocket} />
               <FleetStat label="已分组" val={totalMembers} unit="人" grad="from-energy-400 to-alert-500" icon={Users} />
               <FleetStat label="能量池" val={energyPool} unit="⚡" grad="from-growth-400 to-mission-500" icon={Coins} />
             </div>
           </div>
         </motion.section>
+
+        <TransferRequests teacher />
 
         {/* 挑战奖励单价 —— 定价权归教师，学生不能自填 */}
         <motion.section
@@ -596,7 +594,7 @@ export default function TeacherGroups() {
           </div>
 
           <p className="mt-4 text-[12px] text-ink-500">
-            开关和时长改完立刻生效，不需要保存。组间转账不单设开关：任一窗口开着时学生即可转账。
+            开关和时长改完立刻生效，不需要保存。组间转账不单设开关：任一窗口开着时组长即可提交转账申请，老师审核通过后生效。
           </p>
         </motion.section>
 
@@ -628,7 +626,7 @@ export default function TeacherGroups() {
                   <div className="flex flex-wrap gap-3">
                     {bucket.students.map((u) => (
                       <div key={u.id} className="flex items-center gap-2.5 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
-                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm bg-white object-cover" />
+                        <img src={u.avatar} onError={applyAvatarFallback} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm bg-white object-cover" />
                         <div className="min-w-0">
                           <div className="text-[13px] font-bold text-ink-800 truncate max-w-[110px]">{u.name}</div>
                           <div className="text-[10.5px] text-ink-400">⚡ {u.personalCoins}</div>
@@ -727,15 +725,15 @@ export default function TeacherGroups() {
           <div className="space-y-10">
             {groupsByClass.map((bucket) => (
               <section key={bucket.classId}>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-1 h-7 rounded-full bg-gradient-to-b from-mission-400 to-mission-600" />
-                  <h2 className="text-[19px] font-extrabold text-ink-800">
+                <div className="glass-card flex items-center gap-3 mb-4 px-4 py-3 rounded-2xl">
+                  <div className="w-1 h-7 rounded-full bg-gradient-to-b from-mission-400 to-mission-600 shrink-0" />
+                  <h2 className="text-[18px] md:text-[19px] font-extrabold text-ink-900 tracking-tight">
                     {bucket.className}
-                    <span className="ml-2 text-[13px] font-semibold text-ink-400">
+                    <span className="ml-2 text-[12.5px] font-semibold text-ink-500">
                       {bucket.groups.length} 个小组
                     </span>
                   </h2>
-                  <div className="flex-1 h-px bg-gradient-to-r from-ink-100 to-transparent" />
+                  <div className="flex-1 h-px bg-gradient-to-r from-ink-200/70 to-transparent" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                   {bucket.groups.map((g, idx) => {
@@ -790,7 +788,7 @@ export default function TeacherGroups() {
 
                     <div className="mb-4">
                       {members.length ? (
-                        <AvatarStack users={members as any} size={32} max={6} />
+                        <AvatarStack users={members} size={32} max={6} />
                       ) : (
                         <span className="text-[12px] text-ink-400">暂无成员，点击「成员管理」添加</span>
                       )}
@@ -872,6 +870,17 @@ export default function TeacherGroups() {
                         ±能量币
                       </button>
                     </div>
+                    <button
+                      onClick={() => {
+                        setActiveGroupId(g.id);
+                        setMoveTargetClass('');
+                        setDialog('move');
+                      }}
+                      className="btn-ghost !py-2 !px-3 text-[12px] !rounded-xl w-full mt-2"
+                    >
+                      <ArrowRightLeft size={13} />
+                      换班
+                    </button>
                   </div>
                 </motion.article>
                   );
@@ -1040,7 +1049,7 @@ export default function TeacherGroups() {
                                     : 'bg-white/60 border-ink-100 hover:border-mission-200 hover:bg-mission-50/40'
                                 )}
                               >
-                                <img src={u.avatar} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
+                                <img src={u.avatar} onError={applyAvatarFallback} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
                                 <div className="mt-1.5 text-[10.5px] font-bold text-ink-700 truncate leading-tight">{u.name}</div>
                                 {selected && (
                                   <div className="absolute top-1 right-1 rounded-full bg-gradient-to-br from-mission-500 to-nova-500 flex items-center justify-center text-white shadow-md" style={{ width: 18, height: 18 }}>
@@ -1241,6 +1250,62 @@ export default function TeacherGroups() {
                 </>
               )}
 
+              {dialog === 'move' && activeGroup && (
+                <>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-500 flex items-center justify-center text-white shadow-md">
+                        <ArrowRightLeft size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-[19px] text-ink-900">↔ 小组换班</h3>
+                        <p className="text-[12.5px] text-ink-500">
+                          把 <b className="text-ink-700">{activeGroup.name}</b> 移到其他班级
+                        </p>
+                      </div>
+                      <button onClick={() => setDialog(null)} className="ml-auto w-9 h-9 rounded-xl hover:bg-ink-100 flex items-center justify-center text-ink-400">
+                        <X size={17} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-5">
+                    {classes.filter((c) => c.id !== activeGroup.classId).length === 0 ? (
+                      <p className="text-[13px] text-ink-500">暂无其他班级可移动。</p>
+                    ) : (
+                      <select
+                        value={moveTargetClass}
+                        onChange={(e) => setMoveTargetClass(e.target.value)}
+                        className="w-full bg-white/80 border border-ink-200 focus:border-mission-400 rounded-xl px-4 py-3 text-[15px] font-semibold text-ink-800 focus:outline-none focus:ring-3 focus:ring-mission-400/25"
+                      >
+                        <option value="">选择目标班级…</option>
+                        {classes
+                          .filter((c) => c.id !== activeGroup.classId)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                      </select>
+                    )}
+                    <p className="mt-2 text-[12px] text-ink-400">
+                      组内学生的班级归属会同步更新。
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="btn-ghost flex-1" onClick={() => setDialog(null)}>取消</button>
+                    <button
+                      disabled={!moveTargetClass}
+                      onClick={doMoveClass}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-2 font-bold rounded-2xl transition-all py-3 px-5',
+                        moveTargetClass ? 'btn-mission' : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+                      )}
+                    >
+                      <CheckCircle2 size={15} />
+                      确认换班
+                    </button>
+                  </div>
+                </>
+              )}
+
               {dialog === 'members' && activeGroup && (
                 <>
                   <div className="flex items-center justify-between mb-5">
@@ -1268,7 +1333,7 @@ export default function TeacherGroups() {
                       <div className="space-y-2">
                         {activeMembers.map((u) => (
                           <div key={u.id} className="flex items-center gap-3 bg-white/70 border border-ink-100 rounded-2xl px-3 py-2">
-                            <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm object-cover" />
+                            <img src={u.avatar} onError={applyAvatarFallback} alt={u.name} className="w-9 h-9 rounded-xl border border-white shadow-sm object-cover" />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[13px] font-bold text-ink-800 truncate">{u.name}</span>
@@ -1319,7 +1384,7 @@ export default function TeacherGroups() {
                             onClick={() => addMemberToActive(u.id)}
                             className="relative p-2.5 rounded-2xl border-2 border-ink-100 bg-white/60 hover:border-growth-300 hover:bg-growth-50/40 transition-all text-center"
                           >
-                            <img src={u.avatar} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
+                            <img src={u.avatar} onError={applyAvatarFallback} alt={u.name} className="w-10 h-10 mx-auto rounded-xl border-2 border-white shadow-sm object-cover" />
                             <div className="mt-1.5 text-[10.5px] font-bold text-ink-700 truncate leading-tight">{u.name}</div>
                             <div className="absolute top-1 right-1 rounded-full bg-growth-500 flex items-center justify-center text-white shadow-md" style={{ width: 18, height: 18 }}>
                               <Plus size={11} />
@@ -1509,14 +1574,14 @@ export default function TeacherGroups() {
           </div>
         </div>
       )}
-    </MissionShell>
+    </>
   );
 }
 
-function FleetStat({ label, val, unit, grad, icon: Icon }: { label: string; val: number; unit: string; grad: string; icon: any }) {
+function FleetStat({ label, val, unit, grad, icon: Icon }: { label: string; val: number; unit: string; grad: string; icon: LucideIcon }) {
   const v = useTicker(val, 1000);
   return (
-    <div className="glass-card !shadow-none !border-mission-100/50 px-4 py-3 rounded-2xl min-w-[130px]">
+    <div className="glass-card !shadow-none !border-mission-100/50 px-4 py-3 rounded-2xl min-w-0 sm:min-w-[130px]">
       <div className="flex items-center gap-2.5">
         <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md bg-gradient-to-br', grad)}>
           <Icon size={16} />

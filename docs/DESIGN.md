@@ -1,7 +1,7 @@
 # 物理实验室（Physics Mission Control）设计文档
 
 > 本文档是项目的**唯一权威设计文档**，供后续 Agent / 开发者快速理解全貌并继续开发。
-> 最后更新：2026-09-10。如代码与本文档冲突，以代码为准并请同步更新本文档。
+> 最后局部更新：2026-10-09。布局与路由入口已迁入 `src/app/App.tsx`、`src/app/layouts/AppShell.tsx`，`src/App.tsx` 只保留兼容转发；其余模块仍在分批重构，状态见 [重构进展](refactoring/PROGRESS.md)。如代码与本文档冲突，以代码为准并请同步更新本文档。
 
 ---
 
@@ -17,8 +17,8 @@
 | 角色 | role 值 | 入口 | 核心功能 |
 |---|---|---|---|
 | 学生 | `student` | `/dashboard` | 学习路径、答题挑战、项目实验、招募市场、组间转账、成就 |
-| 教师 | `teacher` | `/teacher/overview` | 总览数据台、分组管理、学生名册、题库审核、安全题库维护 |
-| 管理员 | `admin` | `/admin` | 班级/教师/学生账户管理 |
+| 教师 | `teacher` | `/teacher/overview` | 总览数据台、分组管理、学生名册、班级管理、题库审核、安全题库维护、NFC 卡片 |
+| 管理员 | `admin` | `/admin` | 教师账号管理（其余业务能力与教师一致） |
 
 **硬规则**：每班最多 30 名学生；学生不能自行建组（教师建组或直接分配）；小组名/班级名可由教师修改。
 
@@ -51,11 +51,14 @@
 ```
 Physics_lab/
 ├── src/
-│   ├── App.tsx                  # 路由表 + 角色守卫 + 全局 Toast 桥
+│   ├── App.tsx                  # 指向 app/App.tsx 的兼容转发
+│   ├── app/App.tsx              # 路由表 + 角色守卫 + 数据初始化
+│   ├── app/layouts/AppShell.tsx # 父布局 Outlet，统一包裹 MissionShell
 │   ├── main.tsx                 # 入口（bootstrapFromApi() 恢复状态）
 │   ├── index.css                # Tailwind + 设计 token + 动画/玻璃卡片等组件类
 │   ├── data/
-│   │   └── mockData.ts          # 全部 TS 领域类型 + LS_KEYS + 离线种子数据
+│   │   └── mockData.ts          # 离线演示种子（不再定义业务类型/存储）
+│   ├── types/domain.ts         # 唯一领域类型；types/index.ts 为公共入口
 │   ├── store/                   # Zustand stores（见 §7）
 │   │   ├── authStore.ts         # 登录态/token/当前用户
 │   │   ├── groupStore.ts        # 班级/小组/用户/排名（核心数据源）
@@ -67,10 +70,12 @@ Physics_lab/
 │   │   └── uiStore.ts           # toast 通知等 UI 状态
 │   ├── lib/
 │   │   ├── apiClient.ts         # fetch 封装：自动附 Bearer token、401 处理
-│   │   ├── apiService.ts        # 业务 API 集合（classesApi/groupsApi/projectsApi…）
+│   │   ├── apiService.ts        # 业务 API 公共导出；实现位于 lib/api/
+│   │   ├── api/                # identity/theory/projects/safety/coins 资源客户端
+│   │   ├── storage.ts           # LS_KEYS、浏览器读写与在线会话缓存清理
 │   │   ├── bootstrap.ts         # 启动/刷新时并发拉取后端数据填充各 store
-│   │   ├── reviveDates.ts       # JSON 日期字符串 → Date 对象（按字段名递归）
-│   │   ├── syncQueue.ts         # 离线写操作队列（乐观更新 + 后台同步）
+│   │   ├── reviveDates.ts       # 显式字段日期转换；复用 dateReviver.ts UTC/时区规则
+│   │   ├── syncQueue.ts         # 在线写操作队列（乐观更新 + 服务端快照校正）
 │   │   └── utils.ts             # cn() 等工具
 │   ├── components/
 │   │   ├── layout/MissionShell.tsx  # 全局唯一布局（学生/教师/管理员共用；含侧边栏+顶栏+通知铃铛）
@@ -86,7 +91,10 @@ Physics_lab/
 │   │   ├── deps.py              # get_db / get_current_user / 角色依赖
 │   │   ├── models.py            # 14 张表的 ORM 模型
 │   │   ├── schemas.py           # Pydantic 请求/响应模型（camelCase 序列化）
-│   │   └── routers/             # auth/admin/groups/theory/projects/coins（6 个）
+│   │   ├── access.py           # 班级/小组对象级权限策略
+│   │   ├── services/           # common/activity/grading/coins；不提交事务
+│   │   ├── question_views.py / user_views.py # 安全响应投影，路由不互相导入
+│   │   └── routers/             # auth/admin/groups/theory/quiz/safety/projects/recruitments/showcase/coins/review_questions
 │   ├── tests/                   # pytest（auth/groups/coins/projects/showcase/quiz/challenge_pricing/password_recovery/safety_assignments）
 │   ├── requirements.txt / requirements-dev.txt
 │   └── physics_lab.db           # SQLite 数据文件
@@ -149,7 +157,7 @@ cd backend
 2. **状态恢复**：仅 `initAuth()` 不够；页面刷新/再次进入时必须调用 `bootstrapFromApi()`（教师总览等用 `bootstrapFromApi(true)` 强制拉最新）拉取后端数据填充 `groupStore` 等，否则分组/学生数据为空。
 3. **乐观更新**：写操作先改 store（UI 即时响应）+ 写 localStorage，再异步同步后端；同步任务进 `syncQueue`。
 4. **金币结算归属后端**：项目完成、挑战结算、招募结算、转账均由后端业务端点记账，前端不直接拼装金币流水。
-5. **对赌/委托一律先押后结，不凭空发币**：凡是"一组付钱给另一组"的业务，都在**发起时**把金额从出钱方扣下作押金，结算时再按结果分配、剩余退回。已成对实现的是**挑战**（`theory.py` 创建时预扣 → `services.settle_challenge` 按正确率分账，仅 ≥95% 的 20% 加成是增发）和**招募**（`projects.py` 创建时预扣 `escrow_paid` → `services.settle_recruitment` 按 success/partial/fail 分账）。
+5. **对赌/委托一律先押后结，不凭空发币**：凡是"一组付钱给另一组"的业务，都在**发起时**把金额从出钱方扣下作押金，结算时再按结果分配、剩余退回。已成对实现的是**挑战**（`theory.py` 创建时预扣 → `services.settle_challenge` 按正确率分账，仅 ≥95% 的 20% 加成是增发）和**招募**（`recruitments.py` 创建时预扣 `escrow_paid` → `services.settle_recruitment` 按 success/partial/fail 分账）。
    **不变式：`escrowed = 付给承接方的 + 退回发包方的`**——任何一支只增不减都会变成印钞机。招募原先漏了"预扣"这一半，导致三个分支都在增发，其中 `fail` 会让发包组白得一笔自己从未付过的钱（`reward` 还由客户端随意填，实测 450 → 100450）。2026-09-30 已按上述模型修好：发布时余额不足直接 400、`reward` 必须 > 0、存量招募（`escrow_paid=0`）在结算时补扣。
 6. **日期反序列化**：后端返回 ISO 字符串，前端统一经 `reviveDates(txs, ['createdAt'])` 按字段名转 `Date`。
 7. **流水顺序**：后端交易记录最新在前，bootstrap 时归一化为**时间正序**；展示"最近 N 条"时先 reverse 再 slice。
@@ -168,7 +176,7 @@ cd backend
 
 ---
 
-## 6. 路由与页面清单（src/App.tsx）
+## 6. 路由与页面清单（src/app/App.tsx）
 
 学生端（默认登录后进入）：
 
@@ -196,18 +204,20 @@ cd backend
 
 > `/theory/challenge`（无 `s`）与 `/theory/challenges`（带 `s`）是**两个不同页面**，都在使用，不是新旧拼写关系。
 
-教师端（`MissionShell`，侧边栏 6 项）：
+教师端（`MissionShell`，侧边栏 8 项）：
 
 | 路径 | 页面文件 | 说明 |
 |---|---|---|
 | `/teacher/overview` | TeacherOverview.tsx | 指挥总控台（见 §6.1） |
-| `/teacher/groups` | TeacherGroups.tsx | 分组管理（按班级分区，组内按能量币降序；建组/分配/改名） |
+| `/teacher/groups` | TeacherGroups.tsx | 分组管理（按班级分区，组内按能量币降序；建组/分配/改名/换班） |
 | `/teacher/projects` | TeacherProjects.tsx | 项目管理（审批/冻结/编辑项目） |
-| `/teacher/roster` | StudentRoster.tsx | 学生名册（按班级分区展示、按班级批量选择） |
+| `/teacher/roster` | StudentRoster.tsx | 学生名册 + 班级管理（建班/改名/删班、按班级批量选择） |
 | `/teacher/question-bank` | TeacherQuestionBank.tsx | 题库审核中心（学生提交审核 + 教师上传/导入/导出） |
 | `/teacher/safety` | TeacherSafety.tsx | 安全题库维护（增删改、JSON 批量导入/导出、恢复内置 35 题）+ **考核任务指派** |
+| `/teacher/showcase` | TeacherShowcaseReview.tsx | 成果审核 |
+| `/teacher/nfc` | NfcManagement.tsx | NFC 卡片登记（按班级作用域） |
 
-管理员端：`/admin` → AdminConsole.tsx（班级、教师账户、学生账户管理；`ClassComposition.tsx` 由它以 tab 形式内嵌，不单独占路由）。
+管理员端：`/admin` → AdminConsole.tsx，仅保留**教师账号管理**（新增/删除教师、重置密码）。原「班级构成 / 学生名单 / NFC / 班级管理」标签页已并入教师端；`ClassComposition.tsx` 已删除。
 
 ### 6.1 教师总览页数据来源（TeacherOverview.tsx，已全部真实化）
 
@@ -241,7 +251,7 @@ cd backend
 - 每个 action 内部：先算 next state → `persist()` 写 localStorage → `set()` → `syncToApi()` 后台同步。
 - 组件订阅 store 用 selector：`const projects = useProjectStore((s) => s.projects);`
 
-### 核心 TS 类型（src/data/mockData.ts）
+### 核心 TS 类型（src/types/domain.ts）
 
 - `ProjectStatus = 'planning' | 'progress' | 'review' | 'done' | 'failed' | 'frozen'`
 - `SafetyCategory = 'electric' | 'thermal' | 'optical' | 'mechanical' | 'radiation' | 'chemical' | 'combined'`
@@ -308,6 +318,13 @@ cd backend
 **其他**：`GET /health`
 
 ### 8.4 后端分层
+
+- `routers/` 按 HTTP 资源领域拆分；`main.py` 显式组装，URL 不随模块移动而改变。
+- `access.py` 在角色守卫之后检查资源所属班级和小组；管理员/未绑定班级的全校教师保留全局管理权。
+- `services/` 负责领域计算/余额/流水，调用方统一提交事务。余额写锁、严格扣款、项目和招募原子结算保证并发写入不覆盖旧余额。
+- `question_views.py` / `user_views.py` 负责隐藏答案、密码等响应投影，禁止路由之间互相导入。
+- 项目奖励由教师定价；已结算项目不能重开，普通更新不可直接设成 `done`，使用 `/projects/{id}/done` 结算。前端项目 API 适配器把表单的完成动作转到此接口。
+- 未结算招募含押金时禁止删除项目；先以失败结算退还押金。
 - `deps.py`：`get_db`（请求级 Session）、`get_current_user`（解 JWT）、角色依赖（teacher/admin）。
 - `schemas.py`：Pydantic 模型，配置 `alias_generator`/`populate_by_name` 实现 camelCase 出入参。
 - `models.py`：14 张表 —— classes、groups、users、coin_transactions、topics、questions、quiz_sessions、challenges、projects、recruitments、showcase_items、class_meta、safety_records、safety_assignments。
@@ -318,7 +335,7 @@ cd backend
 ## 9. 后端测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q     # 134 个用例，约 6 秒
+cd backend && .venv/bin/python -m pytest tests/ -q     # 使用独立测试数据库
 ```
 - `tests/test_auth.py`：注册/登录/鉴权
 - `tests/test_groups.py`：建组/加入/改名/分配
@@ -432,10 +449,20 @@ HarmonyOS Sans、Inter、PingFang SC（font-family 栈见 index.css）。
 6. **进度/状态写死**导致 UI 联动断裂：一切进度由 completedTasks/projects 状态实时计算。
 7. **后端测试缺依赖**：务必用 `backend/.venv/bin/python`。
 8. **重启后端**会使旧 token 失效（jwt_secret 变更时）；改 schemas/models 后需重启 uvicorn（未开 --reload）。
-9. **两个 challenge 路由别混淆**：`/theory/challenge`（无 s）渲染 `KnowledgeGalaxy`；`/theory/challenges`（带 s）渲染 `TheoryChallenge`（挑战大厅）。两者都在使用。改路由前读 `src/App.tsx`。
-10. **判断页面是否被使用别只看 `src/App.tsx`**：页面之间会互相引用（`ClassComposition.tsx` 由 `AdminConsole.tsx` 内嵌为 tab，不占路由）。删页面前全仓库 grep 组件名。
+9. **两个 challenge 路由别混淆**：`/theory/challenge`（无 s）渲染 `KnowledgeGalaxy`；`/theory/challenges`（带 s）渲染 `TheoryChallenge`（挑战大厅）。两者都在使用。改路由前读 `src/app/App.tsx`。
+10. **判断页面是否被使用别只看 `src/app/App.tsx`**：页面之间会互相引用（`ClassComposition.tsx` 由 `AdminConsole.tsx` 内嵌为 tab，不占路由）。删页面前全仓库 grep 组件名。
 11. **图片资源**：需要生成图片时使用内置 text_to_image API URL，不用占位图。
 12. **主题 id 只有一套**：`topic-N`（N 从 1 起，不补零）。`mockTopics.ts`、`LearningHub` 的 `TOPIC_META`、store 的 `topics`、后端 seed 必须一致——历史上前两者用 `topic-0N`、后两者用 `topic-N`，导致按主题抽题永远抽到 0 道。
 13. **测验会话属于个人**：`quizSessions` 在线时由后端按 `user_id` 返回、**正序**存（有消费方做 `reverse().slice(0,4)`），且**不写 localStorage**；退出登录时会清。别把它当成 org 级缓存用。
 14. **`startQuiz` 是 async**：会话 id 由服务端下发，调用方必须 `await` 后再跳转；离线/后端不可用时退回本地建会话（会带 `userId` 便于离线筛选）。
 15. **改已有的表要补迁移**：`create_all` 只建缺失的表、**不给已有表加列**。新增列必须写进 `database.py::_run_lightweight_migrations()`（不然线上库缺列，一读就炸）。
+
+## 14. 结构维护边界（2026-10-11）
+
+前端依赖为 `pages/components → store → lib/api → apiClient`；领域类型来自 `types`，浏览器持久化来自 `lib/storage`。`lib/apiService.ts` 保留兼容公共入口，不再堆积实现。`data/mockData.ts` 只由 App 与 groupStore 在离线模式初始化种子；其他文件不依赖演示数据模块。
+
+`apiClient` 只转换约定为 Date 的字段，题干、投稿时间及反馈时间等 string 字段保留字符串。无时区日期按 UTC，明确时区原样解析。旧会话响应不再写入新会话，迟到的旧 token 401 不会注销新 token；当前 401 清业务缓存后跳转登录。核心契约由 `npm run test:core` 检查。
+
+本次拆分没有引入新的前后端依赖、迁移真实数据库或改变页面 URL。当前仍存在跨 store 同步、全量快照加载与大型页面；后续应按功能逐步提取 store 和页面用例，不以改目录代替状态边界治理。数据库版本迁移、挑战多组答题奖励池及全校内容可见性需要单独定义契约和验收。
+
+首次播种必须配置非空、非占位符密码；已有数据库跳过账号播种，不因缺少环境密码而重置账户。播种日志不输出密码。

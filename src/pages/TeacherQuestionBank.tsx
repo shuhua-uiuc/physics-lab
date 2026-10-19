@@ -6,29 +6,21 @@
  *  - 对每道题：查看题干/选项/答案、写教师评价（学生可见）、修改原题内容、通过/驳回、删除
  *  - 教师上传题库：手动新增 / JSON 批量导入
  */
+/**
+ * 题库审核中心 —— 教师/管理员视图
+ *
+ * 功能：
+ *  - 查看两个分区：学生提交（pending/approved/rejected）与教师上传
+ *  - 对每道题：查看题干/选项/答案、写教师评价（学生可见）、修改原题内容、通过/驳回、删除
+ *  - 教师上传题库：手动新增 / JSON 批量导入
+ */
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  LibraryBig,
-  Plus,
-  Upload,
-  Download,
-  Pencil,
-  Trash2,
-  X,
-  CheckCircle2,
-  AlertTriangle,
-  FileUp,
-  Loader2,
-  MessageSquare,
-  Check,
-  XCircle,
-  Clock,
-} from 'lucide-react';
+import { LibraryBig, Plus, Upload, Download, Pencil, Trash2, X, CheckCircle2, AlertTriangle, FileUp, Loader2, MessageSquare, Check, XCircle } from 'lucide-react';
 import { useQuestionBankStore } from '@/store/questionBankStore';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
-import type { QuestionType } from '@/data/mockData';
+import type { QuestionType } from '@/types';
 import { cn } from '@/lib/utils';
 
 type Tab = 'students' | 'teacher';
@@ -73,7 +65,6 @@ export default function TeacherQuestionBank() {
   const userName = useAuthStore((s) => s.name) || '教师';
   const questions = useQuestionBankStore((s) => s.questions);
   const uploadQuestion = useQuestionBankStore((s) => s.uploadQuestion);
-  const submitQuestion = useQuestionBankStore((s) => s.submitQuestion);
   const approveQuestion = useQuestionBankStore((s) => s.approveQuestion);
   const rejectQuestion = useQuestionBankStore((s) => s.rejectQuestion);
   const editQuestion = useQuestionBankStore((s) => s.editQuestion);
@@ -107,6 +98,10 @@ export default function TeacherQuestionBank() {
     list.forEach((q) => (c[q.reviewStatus]++));
     return c;
   }, [list]);
+
+  const runWrite = async (action:()=>void | Promise<void>) => {
+    try { await action();return true; } catch (err) {pushToast(err instanceof Error ? err.message : '保存失败，请重试','error');return false;}
+  };
 
   // ---------- 编辑 ----------
   const openCreate = () => {
@@ -171,7 +166,7 @@ export default function TeacherQuestionBank() {
     }
   };
 
-  const saveEditor = () => {
+  const saveEditor = async () => {
     if (!editor) return;
     const stem = editor.stem.trim();
     if (!stem) return setEditorErr('请填写题干');
@@ -199,14 +194,16 @@ export default function TeacherQuestionBank() {
       type: editor.type, stem, options, answer,
       knowledgePoint: editor.kp.trim(), difficulty: editor.difficulty,
     };
+    try {
     if (editor.id) {
-      editQuestion(editor.id, payload, userName);
+      await editQuestion(editor.id, payload, userName);
       pushToast('题目已修改', 'success');
     } else {
-      uploadQuestion(payload, userName);
+      await uploadQuestion(payload, userName);
       pushToast('题目已上传并纳入题库', 'success');
     }
     setEditor(null);
+    } catch (err) { setEditorErr(err instanceof Error ? err.message : '保存失败'); }
   };
 
   // ---------- 反馈 ----------
@@ -215,24 +212,24 @@ export default function TeacherQuestionBank() {
     setFeedbackText(q.teacherFeedback || '');
   };
 
-  const submitFeedback = () => {
+  const submitFeedback = async () => {
     if (!feedbackTarget) return;
     const text = feedbackText.trim();
     if (!text) return;
-    setFeedback(feedbackTarget.id, text, userName);
+    if (!await runWrite(()=>setFeedback(feedbackTarget.id, text, userName))) return;
     pushToast('评价已发送给提交者', 'success');
     setFeedbackTarget(null);
   };
 
   // ---------- 驳回 ----------
-  const submitReject = () => {
+  const submitReject = async () => {
     if (!rejectTarget) return;
     const text = rejectReason.trim();
     if (!text) {
       pushToast('驳回需填写原因', 'warning');
       return;
     }
-    rejectQuestion(rejectTarget.id, text);
+    if (!await runWrite(()=>rejectQuestion(rejectTarget.id, text))) return;
     pushToast('已驳回并通知提交者', 'success');
     setRejectTarget(null);
     setRejectReason('');
@@ -246,20 +243,21 @@ export default function TeacherQuestionBank() {
     reader.readAsText(file);
   };
 
-  const doImport = () => {
+  const doImport = async () => {
     if (!importText.trim()) return setImportErr('请粘贴 JSON 或选择文件');
-    let parsed: any;
+    let parsed: unknown;
     try { parsed = JSON.parse(importText); } catch { return setImportErr('JSON 格式错误'); }
-    const list = Array.isArray(parsed) ? parsed : parsed.questions || [];
+    const questions = parsed && typeof parsed === 'object' && 'questions' in parsed ? parsed.questions : undefined;
+    const list: unknown[] = Array.isArray(parsed) ? parsed : Array.isArray(questions) ? questions : [];
     if (!list.length) return setImportErr('未解析到题目');
     setImporting(true);
-    setTimeout(() => {
-      const n = importTeacherQuestions(list, userName);
+    try {
+      const n = await importTeacherQuestions(list, userName);
       setImporting(false);
       setImportOpen(false);
       setImportText('');
       pushToast(`成功导入 ${n} 道题目`, 'success');
-    }, 300);
+    } catch (err) { setImportErr(err instanceof Error ? err.message : '导入失败'); } finally { setImporting(false); }
   };
 
   const isAnswer = (q: (typeof questions)[number], i: number) => {
@@ -272,7 +270,7 @@ export default function TeacherQuestionBank() {
   return (
     <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="glass-card p-5 md:p-7 flex items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-mission-400 to-mission-600 flex items-center justify-center text-white shadow-lg">
           <LibraryBig size={28} strokeWidth={2.2} />
         </div>
@@ -423,7 +421,7 @@ export default function TeacherQuestionBank() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   {q.reviewStatus !== 'approved' && (
                     <button
-                      onClick={() => approveQuestion(q.id, q.teacherFeedback)}
+                      onClick={() => runWrite(()=>approveQuestion(q.id, q.teacherFeedback))}
                       className="btn-growth !py-1.5 !px-3 text-[12px] inline-flex items-center gap-1"
                     >
                       <Check size={13} /> 通过
@@ -643,7 +641,7 @@ export default function TeacherQuestionBank() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => { if (deleteTarget) { deleteQuestion(deleteTarget.id); pushToast('已删除题目', 'success'); setDeleteTarget(null); } }}
+        onConfirm={async () => { if (deleteTarget && await runWrite(()=>deleteQuestion(deleteTarget.id))) { pushToast('已删除题目', 'success'); setDeleteTarget(null); } }}
         title="删除题目"
         message={`确定删除这道题吗？\n「${deleteTarget?.stem}」`}
         confirmText="确认删除"

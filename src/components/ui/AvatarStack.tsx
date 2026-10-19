@@ -1,4 +1,5 @@
-import { User } from '@/data/mockData';
+import { applyAvatarFallback } from '@/lib/imageFallback';
+import type { User } from '@/types';
 import { User as UserIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +24,7 @@ export default function AvatarStack({ users, max = 4, size = 28, className }: Av
           style={{ width: size, height: size, background: colors[i % colors.length], zIndex: shown.length - i }}
         >
           {u.avatar ? (
-            <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" />
+            <img src={u.avatar} onError={applyAvatarFallback} alt={u.name} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">
               <UserIcon size={size * 0.55} />

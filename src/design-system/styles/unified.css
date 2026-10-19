@@ -1,0 +1,86 @@
+/* Shared visual language for the welcome screen and every mission workspace. */
+:root {
+  --pmc-navy: #102148;
+  --pmc-ink: #182847;
+  --pmc-muted: #65738e;
+  --pmc-line: rgba(112, 137, 199, .18);
+  --pmc-surface: rgba(255, 255, 255, .76);
+  --pmc-radius: 24px;
+}
+
+.mission-stage {
+  color: var(--pmc-ink);
+  background: radial-gradient(circle at 83% 9%, rgba(126, 139, 241, .22), transparent 28%),
+    radial-gradient(circle at 18% 83%, rgba(106, 215, 236, .18), transparent 35%),
+    linear-gradient(140deg, #ecf2ff 0%, #f8fbff 48%, #edefff 100%);
+}
+
+.mission-stage :is(.glass-card, .card-base, .mission-page-intro) {
+  border: 1px solid rgba(255, 255, 255, .82);
+  background-color: var(--pmc-surface);
+  box-shadow: 0 16px 46px rgba(39, 61, 125, .09), inset 0 1px rgba(255, 255, 255, .9);
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+}
+
+.mission-stage :is(button, a, input, select, textarea, [role='link']):focus-visible {
+  outline: 2px solid #416ce6;
+  outline-offset: 3px;
+}
+
+.mission-stage main :is(h1, h2, h3) {
+  text-wrap: balance;
+  letter-spacing: -.025em;
+}
+
+.mission-stage main :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  border-radius: 12px;
+}
+
+.mission-stage main table th {
+  color: #667897;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.mission-stage main table td {
+  color: #263759;
+  line-height: 1.5;
+}
+
+.mission-stage main :is(.mission-page-intro, .mission-hero) {
+  border-radius: var(--pmc-radius);
+}
+
+.mission-stage main :is(.btn-mission, .btn-primary) {
+  background: linear-gradient(115deg, #4d72ed, #6874ec);
+  color: #fff;
+}
+
+.mission-stage main .btn-energy { background: linear-gradient(115deg, #f58132, #f2a04b); }
+
+.mission-page-context {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 1.75rem;
+  margin: -.15rem 0 1rem;
+  color: #607194;
+  font-size: .75rem;
+  font-weight: 650;
+}
+
+.mission-page-context a { color: #4169cb; }
+.mission-page-context a:hover { text-decoration: underline; }
+.mission-page-context span:last-child { color: #273b6d; }
+
+.dark .mission-stage :is(.glass-card, .card-base, .mission-page-intro) {
+  background-color: rgba(24, 35, 68, .8);
+  border-color: rgba(156, 184, 248, .18);
+}
+
+@media (max-width: 767px) {
+  .mission-page-context { margin-bottom: .75rem; }
+  .mission-stage main table td { white-space: nowrap; }
+}

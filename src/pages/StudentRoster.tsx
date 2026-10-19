@@ -1,3 +1,15 @@
+import type { LucideIcon } from 'lucide-react';
+import { applyAvatarFallback } from '@/lib/imageFallback';
+/**
+ * 学生名单管理 —— 教师/管理员视图
+ *
+ * 功能：
+ *  - 按班级查看学生名单（表格）
+ *  - 重命名班级
+ *  - 批量上传学生（粘贴名单 / JSON）
+ *  - 删除学生
+ *  - 每班人数上限 30
+ */
 /**
  * 学生名单管理 —— 教师/管理员视图
  *
@@ -10,29 +22,14 @@
  */
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Users,
-  School,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-  Upload,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  Zap,
-  RotateCcw,
-  KeyRound,
-} from 'lucide-react';
+import { Users, School, Pencil, Plus, Trash2, X, Upload, Loader2, AlertTriangle, CheckCircle2, Zap, RotateCcw, KeyRound } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useGroupStore } from '@/store/groupStore';
 import { useCoinStore } from '@/store/coinStore';
 import { classesApi, usersApi } from '@/lib/apiService';
 import { syncToApi } from '@/lib/syncQueue';
 import { computeEarnedByUser } from '@/lib/earnedCoins';
-import type { SchoolClass, User } from '@/data/mockData';
+import type { SchoolClass, User } from '@/types';
 import { cn } from '@/lib/utils';
 
 const MAX_STUDENTS = 30;
@@ -66,6 +63,9 @@ export default function StudentRoster() {
 
   // 班级重命名
   const [editingClass, setEditingClass] = useState<{ id: string; name: string } | null>(null);
+  // 新建 / 删除班级
+  const [newClassName, setNewClassName] = useState('');
+  const [deletingClass, setDeletingClass] = useState<{ id: string; name: string } | null>(null);
 
   // 上传学生（针对某个班级）
   const [showUpload, setShowUpload] = useState(false);
@@ -119,8 +119,39 @@ export default function StudentRoster() {
       setClasses((prev) => prev.map((c) => (c.id === cls.id ? cls : c)));
       setEditingClass(null);
       pushToast('班级重命名成功', 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '重命名失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '重命名失败', 'error');
+    }
+  };
+
+  const handleCreateClass = async () => {
+    const name = newClassName.trim();
+    if (!name) return;
+    try {
+      const created = await classesApi.create(name);
+      setClasses((prev) => [...prev, created]);
+      setStudentsByClass((prev) => ({ ...prev, [created.id]: [] }));
+      setNewClassName('');
+      pushToast(`班级「${created.name}」创建成功`, 'success');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '创建失败', 'error');
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    if (!deletingClass) return;
+    try {
+      await classesApi.remove(deletingClass.id);
+      setClasses((prev) => prev.filter((c) => c.id !== deletingClass.id));
+      setStudentsByClass((prev) => {
+        const next = { ...prev };
+        delete next[deletingClass.id];
+        return next;
+      });
+      setDeletingClass(null);
+      pushToast(`班级「${deletingClass.name}」已删除`, 'success');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '删除失败', 'error');
     }
   };
 
@@ -133,10 +164,10 @@ export default function StudentRoster() {
       // 尝试 JSON 解析
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        items = parsed.map((p: any) => ({
+        items = parsed.map((p: string | { name: string; username?: string; password?: string }) => ({
           name: typeof p === 'string' ? p : p.name,
-          username: p.username,
-          password: p.password,
+          username: typeof p === 'string' ? undefined : p.username,
+          password: typeof p === 'string' ? undefined : p.password,
         }));
       }
     } catch {
@@ -163,8 +194,8 @@ export default function StudentRoster() {
       setUploadText('');
       setShowUpload(false);
       pushToast(`成功导入 ${created.length} 名学生`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '上传失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '上传失败', 'error');
     } finally {
       setUploading(false);
     }
@@ -184,8 +215,8 @@ export default function StudentRoster() {
       );
       setDeleteStudentId(null);
       pushToast(`已删除学生「${deleteStudentId.name}」`, 'success');
-    } catch (err: any) {
-      pushToast(err?.message || '删除失败', 'error');
+    } catch (err: unknown) {
+      pushToast((err instanceof Error ? err.message : undefined) || '删除失败', 'error');
     }
   };
 
@@ -257,7 +288,7 @@ export default function StudentRoster() {
   return (
     <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="glass-card p-5 md:p-7 flex items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-mission-400 to-nova-600 flex items-center justify-center text-white shadow-lg">
           <Users size={28} strokeWidth={2.2} />
         </div>
@@ -282,6 +313,28 @@ export default function StudentRoster() {
           </button>
         </div>
       )}
+
+      {/* 新建班级 */}
+      <div className="glass-card p-5 rounded-[22px] flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <Plus size={18} className="text-mission-500 shrink-0" />
+          <input
+            type="text"
+            value={newClassName}
+            onChange={(e) => setNewClassName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateClass()}
+            className="input-field flex-1"
+            placeholder="输入新班级名称，如：高三(3)班"
+          />
+        </div>
+        <button
+          onClick={handleCreateClass}
+          disabled={!newClassName.trim()}
+          className="btn-mission disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2 !py-2.5"
+        >
+          <Plus size={16} /> 创建班级
+        </button>
+      </div>
 
       {/* 各班级名单分批呈现 */}
       {loading ? (
@@ -328,6 +381,12 @@ export default function StudentRoster() {
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card glass-card-hover text-[12px] font-semibold text-ink-600 hover:text-mission-600"
                   >
                     <Pencil size={13} /> 改班级名
+                  </button>
+                  <button
+                    onClick={() => setDeletingClass({ id: c.id, name: c.name })}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card glass-card-hover text-[12px] font-semibold text-ink-600 hover:text-danger-600"
+                  >
+                    <Trash2 size={13} /> 删除班级
                   </button>
                   <button
                     onClick={() => {
@@ -383,7 +442,7 @@ export default function StudentRoster() {
                         <td className="px-5 py-3 text-[13px] text-ink-400 font-mono">{i + 1}</td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
-                            <img src={s.avatar} alt={s.name} className="w-7 h-7 rounded-lg object-cover bg-mission-100" />
+                            <img src={s.avatar} onError={applyAvatarFallback} alt={s.name} className="w-7 h-7 rounded-lg object-cover bg-mission-100" />
                             <span className="text-[13px] font-semibold text-ink-800">{s.name}</span>
                           </div>
                         </td>
@@ -499,6 +558,17 @@ export default function StudentRoster() {
         </div>
       </Modal>
 
+      {/* 删除班级确认 */}
+      <ConfirmModal
+        open={!!deletingClass}
+        onClose={() => setDeletingClass(null)}
+        onConfirm={handleDeleteClass}
+        title="删除班级"
+        message={`删除「${deletingClass?.name || ''}」将同时删除该班所有小组、学生与金币流水，此操作不可撤销。`}
+        confirmText="确认删除"
+        danger
+      />
+
       {/* 删除学生确认 */}
       <ConfirmModal
         open={!!deleteStudentId}
@@ -546,7 +616,7 @@ function Modal({
   open: boolean;
   onClose: () => void;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (

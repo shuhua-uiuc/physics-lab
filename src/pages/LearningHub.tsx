@@ -1,35 +1,18 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import AdaptiveNavigation from '@/components/ui/AdaptiveNavigation';
+import { useLearningProgressStore } from '@/store/learningProgressStore';
+import { apiEnabled } from '@/lib/apiClient';
+import type { LucideIcon } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import {
-  Atom,
-  Zap,
-  Eye,
-  ThermometerSun,
-  RadioTower,
-  Waves,
-  Rocket,
-  Scale,
-  CheckCircle2,
-  Star,
-  Sparkles,
-  PlayCircle,
-  Trophy,
-  Target,
-  Lightbulb,
-  Brain,
-  ChevronRight,
-  ChevronDown,
-  BookOpen,
-  X,
-  HelpCircle,
-} from 'lucide-react';
-import ProgressRing from '@/components/ui/ProgressRing';
+import { Atom, Zap, Eye, ThermometerSun, RadioTower, Waves, Rocket, Scale, CheckCircle2, Star, Sparkles, PlayCircle, Trophy, Target, Lightbulb, Brain, ChevronRight, ChevronDown, BookOpen, X, HelpCircle } from 'lucide-react';
 import { useTheoryStore } from '@/store/theoryStore';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { mockTopics } from '@/data/mockTopics';
+import { getKnowledgeGuide } from '@/lib/knowledgeSystem';
+import { getLearningExamples } from '@/lib/learningExamples';
 import { cn } from '@/lib/utils';
 
 type TopicTab = 'ai-study' | 'knowledge' | 'quiz';
@@ -37,7 +20,7 @@ type TopicTab = 'ai-study' | 'knowledge' | 'quiz';
 interface TopicMeta {
   id: string;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   chapters: number;
   difficulty: 1 | 2 | 3;
   completed: boolean;
@@ -55,14 +38,11 @@ const TOPIC_META: TopicMeta[] = [
   { id: 'topic-8', title: '误差分析', icon: Scale, chapters: 7, difficulty: 2, completed: false, unlocked: false },
 ];
 
-const QUIZ_HISTORY = [
-  { id: 1, date: '07-12 14:30', accuracy: 92, reward: 180, passed: true },
-  { id: 2, date: '07-08 19:15', accuracy: 85, reward: 120, passed: true },
-  { id: 3, date: '07-05 10:20', accuracy: 76, reward: 60, passed: false },
-];
+
 
 export default function LearningHub() {
-  const [activeTopicId, setActiveTopicId] = useState('topic-2');
+  const { id: routeTopicId } = useParams();
+  const [activeTopicId, setActiveTopicId] = useState(routeTopicId || 'topic-1');
   const [activeTab, setActiveTab] = useState<TopicTab>('ai-study');
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
@@ -71,8 +51,9 @@ export default function LearningHub() {
 
   const navigate = useNavigate();
   const pushToast = useUIStore((s) => s.pushToast);
-  const { quizSessions, startQuiz } = useTheoryStore();
+  const { quizSessions: allQuizSessions, startQuiz, questions } = useTheoryStore();
   const userId = useAuthStore((s) => s.userId);
+  const quizSessions = useMemo(() => allQuizSessions.filter((session) => (session.userId === userId || (apiEnabled && !session.userId)) && session.graded), [allQuizSessions, userId]);
 
   // 完成/解锁：从真实测验派生（某主题有通过记录即完成；主题按顺序解锁）
   const completedTopicIds = useMemo(() => new Set(quizSessions.filter((s) => s.passed).map((s) => s.topicId)), [quizSessions]);
@@ -85,6 +66,18 @@ export default function LearningHub() {
       }),
     [completedTopicIds]
   );
+  useEffect(() => {
+    const requested = topicMeta.find((topic) => topic.id === routeTopicId && topic.unlocked);
+    const fallback = topicMeta.find((topic) => topic.unlocked && !topic.completed) ?? topicMeta[0];
+    setActiveTopicId(requested?.id ?? fallback.id);
+    setExpandedChapter(null);
+    setSelectedPoint(null);
+    if (routeTopicId && !requested) {
+      pushToast('该主题不存在或尚未解锁，已返回可学习的主题', 'warning');
+      navigate('/theory/topics', { replace: true });
+    }
+  }, [routeTopicId, topicMeta, navigate, pushToast]);
+
   const quizHistory = useMemo(
     () =>
       quizSessions
@@ -100,7 +93,14 @@ export default function LearningHub() {
   const avgAccuracy = quizSessions.length > 0 ? Math.round(quizSessions.reduce((sum, s) => sum + s.score, 0) / quizSessions.length) : 0;
 
   const activeTopicData = mockTopics.find((t) => t.id === activeTopicId) || mockTopics[0];
+  const selectedExamples = getLearningExamples(activeTopicId, selectedPoint, questions);
   const activeMeta = topicMeta.find((t) => t.id === activeTopicId) || topicMeta[0];
+  const markVisited = useLearningProgressStore((state) => state.markVisited);
+  useEffect(() => {
+    if (!userId || !activeMeta.unlocked) return;
+    if (activeTab === 'ai-study') markVisited(userId, 'ai_learn');
+    if (activeTab === 'knowledge') markVisited(userId, 'knowledge_organize');
+  }, [userId, activeTab, activeMeta.unlocked, markVisited]);
   const unlockedCount = topicMeta.filter((t) => t.unlocked).length;
   const completedCount = topicMeta.filter((t) => t.completed).length;
   const totalProgress = Math.round((completedCount / topicMeta.length) * 100);
@@ -110,7 +110,7 @@ export default function LearningHub() {
   /** 建一条真实测验会话再跳转。之前是跳 `${topicId}-quiz` 这个编造的 id，
    *  测验页找不到它就退化成「抽全局前 10 题」，交卷时还报「会话不存在」。 */
   const handleStartQuiz = async () => {
-    if (startingQuiz) return;
+    if (startingQuiz || !activeMeta.unlocked) return;
     setStartingQuiz(true);
     try {
       const session = await startQuiz(activeTopicId, userId);
@@ -123,19 +123,19 @@ export default function LearningHub() {
 
   return (
     <div className="w-full space-y-6">
-      <section className="glass-card glass-card-hover p-8 rounded-[20px] relative overflow-hidden">
+      <section className="student-learning-intro glass-card p-8 rounded-[20px] relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-gradient-to-br from-mission-300/30 to-nova-300/20 blur-3xl pointer-events-none" />
         <div className="absolute -left-10 -bottom-10 w-56 h-56 rounded-full bg-gradient-to-br from-growth-300/20 to-mission-300/20 blur-3xl pointer-events-none" />
         
-        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        <div className="student-learning-hero-grid relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           <div className="lg:col-span-8">
             <div className="mission-label mb-4">
               <BookOpen size={12} />
               LEARNING HUB · AI POWERED
             </div>
             <h1 className="text-4xl font-black tracking-tight mb-3">
-              <span className="text-gradient-mission">Learning Hub</span>
-              <span className="text-ink-800"> · AI 学习中枢</span>
+              <span className="student-learning-title text-ink-800">AI 学习中枢</span>
+              <span className="student-learning-subtitle text-gradient-mission">Learning Hub</span>
             </h1>
             <p className="text-lg text-ink-600 font-medium leading-relaxed max-w-2xl">
               从探索到精通，8大物理主题 AI 陪你一路升级。每一个知识点都是一颗星，每一次挑战都是成长的阶梯。
@@ -153,54 +153,22 @@ export default function LearningHub() {
             </div>
           </div>
 
-          <div className="lg:col-span-4 flex items-center justify-end">
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                <ProgressRing
-                  value={totalProgress}
-                  size={120}
-                  strokeWidth={10}
-                  trackColor="rgba(79,124,255,0.1)"
-                  indicatorColor="url(#progressGrad)"
-                  showLabel={false}
-                />
-                <svg width="0" height="0">
-                  <defs>
-                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#4F7CFF" />
-                      <stop offset="50%" stopColor="#8B5CF6" />
-                      <stop offset="100%" stopColor="#22C55E" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-3xl font-black text-gradient-mission tabular-nums">{totalProgress}</div>
-                  <div className="text-[10px] font-bold text-ink-500 tracking-widest uppercase">Total Progress</div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="chip-energy !px-3 !py-2">
-                  <Zap size={14} />
-                  当前学习：<span className="font-bold">{activeMeta.title}</span>
-                </div>
-                <div className="glass-card !py-2 !px-3 rounded-xl flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-growth-500 animate-pulse" />
-                  <span className="text-sm font-bold text-ink-700">
-                    已解锁 <span className="text-mission-600">{unlockedCount}</span>/8 主题
-                  </span>
-                </div>
-              </div>
-            </div>
+          <div className="student-learning-summary">
+            <div className="student-learning-progress-heading"><span>总体学习进度</span><strong>{totalProgress}<small>%</small></strong></div>
+            <progress aria-label="总体学习进度" value={totalProgress} max={100} />
+            <div className="student-learning-summary-row"><Zap size={16} aria-hidden="true" /><span>当前学习</span><strong>{activeMeta.title}</strong></div>
+            <div className="student-learning-summary-row"><CheckCircle2 size={16} aria-hidden="true" /><span>已解锁主题</span><strong>{unlockedCount} / 8</strong></div>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <aside className="lg:col-span-3 space-y-3">
+      <AdaptiveNavigation title="主题导航" summary={activeMeta.title} width={230} navigation={<aside className="space-y-3">
           <div className="mission-label">
             <Atom size={12} />
             物理主题导航
           </div>
+          <p className="student-topic-hint text-xs text-white/80">左右滑动查看主题</p>
+          <div className="student-topic-list space-y-3" aria-label="物理主题列表" tabIndex={0}>
           {topicMeta.map((meta, idx) => {
             const Icon = meta.icon;
             const isActive = activeTopicId === meta.id;
@@ -210,7 +178,8 @@ export default function LearningHub() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                onClick={() => meta.unlocked && setActiveTopicId(meta.id)}
+                data-nav-select
+                onClick={() => meta.unlocked && navigate(`/theory/topics/${meta.id}`)}
                 disabled={!meta.unlocked}
                 className={cn(
                   'w-full glass-card glass-card-hover p-4 text-left relative overflow-hidden group',
@@ -247,7 +216,7 @@ export default function LearningHub() {
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="chip-mission !py-0.5 !text-[10px]">
-                        {meta.chapters} 章
+                        {mockTopics.find((topic) => topic.id === meta.id)?.outline.length ?? 0} 章
                       </span>
                       <div className="flex items-center gap-0.5">
                         {Array.from({ length: 3 }).map((_, i) => (
@@ -264,23 +233,25 @@ export default function LearningHub() {
               </motion.button>
             );
           })}
-        </aside>
+          </div>
+        </aside>}>
 
-        <section className="lg:col-span-9">
-          <div className="flex items-center gap-2 mb-4">
+        <section>
+          <div className="workspace-tabs flex flex-wrap items-center gap-2 mb-4">
             {([
-              { id: 'ai-study', label: 'AI Study Tabs', icon: Brain, color: 'mission' },
-              { id: 'knowledge', label: 'Knowledge Galaxy Mini', icon: Sparkles, color: 'nova' },
-              { id: 'quiz', label: 'Quiz Arena', icon: Trophy, color: 'energy' },
+              { id: 'ai-study', label: 'AI 自学', icon: Brain, color: 'mission' },
+              { id: 'knowledge', label: '知识体系', icon: Sparkles, color: 'nova' },
+              { id: 'quiz', label: '综合测验', icon: Trophy, color: 'energy' },
             ] as const).map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  aria-pressed={isActive}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    'px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all',
+                    'px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all',
                     isActive
                       ? 'glass-card shadow-glowMission text-mission-700'
                       : 'text-ink-500 hover:text-ink-700 hover:bg-white/50'
@@ -325,7 +296,7 @@ export default function LearningHub() {
               <div className="space-y-4">
                 {activeTopicData.aiMaterial.split('## ').filter(Boolean).map((section, idx) => {
                   const [title, ...contentLines] = section.split('\n');
-                  const content = contentLines.join('\n').trim();
+                  const content = contentLines.join('\n').trim().replace(/\n(?=\*\*解\*\*)/g, '\n\n');
                   const iconMap = [Target, Lightbulb, Brain, ChevronRight];
                   const Icon = iconMap[idx] || BookOpen;
                   return (
@@ -334,7 +305,7 @@ export default function LearningHub() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.08 }}
-                      className="glass-card p-6 rounded-2xl border-2 border-dashed border-mission-200/60"
+                      className="student-study-section glass-card p-6 rounded-2xl border-2 border-dashed border-mission-200/60"
                     >
                       <div className="flex items-center gap-3 mb-4">
                         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-mission-500 to-nova-500 flex items-center justify-center text-white">
@@ -342,7 +313,7 @@ export default function LearningHub() {
                         </div>
                         <h4 className="text-lg font-black text-ink-800">{title.trim()}</h4>
                       </div>
-                      <div className="prose prose-sm max-w-none text-ink-700 prose-headings:text-ink-800 prose-strong:text-mission-700 prose-code:text-nova-700 prose-code:bg-nova-50 prose-code:px-1 prose-code:rounded">
+                      <div className="student-study-copy prose prose-sm max-w-none text-ink-700 prose-headings:text-ink-800 prose-strong:text-mission-700 prose-code:text-nova-700 prose-code:bg-nova-50 prose-code:px-1 prose-code:rounded">
                         <ReactMarkdown>{content}</ReactMarkdown>
                       </div>
                     </motion.div>
@@ -356,9 +327,9 @@ export default function LearningHub() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-1 lg:grid-cols-12 gap-4"
+              className="min-w-0"
             >
-              <div className="lg:col-span-7 glass-card p-6 rounded-2xl">
+              <AdaptiveNavigation title="章节目录" summary={selectedPoint ?? activeTopicData.title} width={300} navigation={<div className="glass-card p-4 rounded-2xl">
                 <div className="flex items-center justify-between mb-5">
                   <div className="mission-label">
                     <Sparkles size={12} />
@@ -372,6 +343,7 @@ export default function LearningHub() {
                     return (
                       <div key={cIdx} className="rounded-xl overflow-hidden">
                         <button
+                          aria-expanded={isExpanded}
                           onClick={() => setExpandedChapter(isExpanded ? null : chapter.chapter)}
                           className="w-full p-4 glass-card rounded-xl flex items-center justify-between hover:bg-mission-50/40 transition-colors"
                         >
@@ -397,6 +369,7 @@ export default function LearningHub() {
                             {chapter.points.map((point, pIdx) => (
                               <button
                                 key={pIdx}
+                                data-nav-select
                                 onClick={() => setSelectedPoint(point)}
                                 className={cn(
                                   'w-full p-3 rounded-xl text-left flex items-center gap-3 transition-all',
@@ -405,10 +378,7 @@ export default function LearningHub() {
                                     : 'hover:bg-ink-50 border border-transparent'
                                 )}
                               >
-                                <div className={cn(
-                                  'node-badge !w-7 !h-7 !text-[11px]',
-                                  pIdx % 3 === 0 ? 'done' : pIdx % 3 === 1 ? 'active' : 'pending'
-                                )}>
+                                <div className="w-7 h-7 shrink-0 rounded-full bg-mission-100 text-mission-700 text-[11px] font-bold flex items-center justify-center">
                                   {pIdx + 1}
                                 </div>
                                 <span className={cn(
@@ -425,37 +395,30 @@ export default function LearningHub() {
                     );
                   })}
                 </div>
-              </div>
+              </div>}>
 
-              <div className="lg:col-span-5 space-y-4">
+              <div className="space-y-4">
                 <div className="glass-card p-5 rounded-2xl">
                   <div className="chip-nova mb-3">
-                    <Lightbulb size={12} /> 典型例题卡
+                    <Lightbulb size={12} /> 知识要点与例题
                   </div>
                   {selectedPoint ? (
                     <div className="space-y-3">
                       <h4 className="font-bold text-ink-800">{selectedPoint}</h4>
-                      {[1, 2].map((qId) => (
-                        <div key={qId} className="p-4 rounded-xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100">
-                          <div className="text-xs font-bold text-mission-600 mb-2">例题 {qId}</div>
-                          <p className="text-sm text-ink-700 leading-relaxed">
-                            关于「{selectedPoint}」的典型问题：请结合核心概念分析物理过程，画出受力图/光路图/电路图辅助思考。
-                          </p>
+                      <p className="text-xs font-bold text-mission-600">{getKnowledgeGuide(activeTopicId, selectedPoint)?.level}</p>
+                      <p className="text-sm text-ink-700 leading-relaxed">{getKnowledgeGuide(activeTopicId, selectedPoint)?.summary}</p>
+                      {selectedExamples.length ? selectedExamples.map((example, index) => (
+                        <div key={`${selectedPoint}-${index}`} className="p-4 rounded-xl bg-gradient-to-br from-mission-50/60 to-nova-50/40 border border-mission-100">
+                          <div className="text-xs font-bold text-mission-600 mb-2">例题 {index + 1}</div>
+                          <p className="text-sm text-ink-700 leading-relaxed whitespace-pre-line">{example.question}</p>
                           <button className="btn-mission mt-3 !py-2 !px-4 !text-sm w-full" onClick={() => {
-                            setCurrentAnalysis({
-                              point: selectedPoint || '',
-                              question: `关于「${selectedPoint}」的典型问题：请结合核心概念分析物理过程，画出受力图/光路图/电路图辅助思考。`,
-                              answer: qId === 1 ? '根据库仑定律 F = kQq/r²，结合电场强度 E = F/q = kQ/r²，可知电场强度与距离平方成反比。' : '根据电势能公式 W = qU，结合电势差与电场强度的关系 U = Ed，可推导电势能与位置的关系。',
-                              analysis: qId === 1 
-                                ? '【解析思路】首先明确库仑定律描述的是真空中两个点电荷之间的相互作用力，公式为 F = kQ₁Q₂/r²。当我们引入试探电荷 q 时，电场强度的定义为 E = F/q，将库仑力代入可得 E = kQ/r²（Q 为场源电荷）。这表明在点电荷产生的电场中，电场强度的大小与场源电荷成正比，与距离的平方成反比。\n\n【关键要点】\n• 电场强度是矢量，方向由正电荷指向负电荷\n• 点电荷电场呈球对称分布\n• 多个点电荷的电场遵循叠加原理\n\n【常见误区】\n• 混淆电场强度与电场力：E 与试探电荷无关，F 与试探电荷有关\n• 忽略距离的平方关系导致数量级错误'
-                                : '【解析思路】电势能的变化等于电场力做的功，即 ΔEp = -W电。电势差的定义为 U = W/q，因此 W = qU。对于匀强电场，U = Ed（d 为沿电场方向的距离），因此 W = qEd。\n\n【关键要点】\n• 电势能是相对量，需要选取零势能点\n• 电场力做正功，电势能减少；电场力做负功，电势能增加\n• 电势与电势差的关系：U_AB = φ_A - φ_B\n\n【常见误区】\n• 混淆电势与电势能\n• 忽略电势的正负号对做功方向的影响'
-                            });
+                            setCurrentAnalysis({ point: selectedPoint, ...example });
                             setShowAnalysis(true);
                           }}>
-                            <PlayCircle size={14} /> 查看解析
+                            <PlayCircle size={14} /> {example.analysis ? '查看解析' : '查看答案'}
                           </button>
                         </div>
-                      ))}
+                      )) : <p className="text-sm text-ink-500">该知识点暂无配套例题，可先阅读学习材料。</p>}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-ink-400">
@@ -465,6 +428,7 @@ export default function LearningHub() {
                   )}
                 </div>
               </div>
+            </AdaptiveNavigation>
             </motion.div>
           )}
 
@@ -570,7 +534,7 @@ export default function LearningHub() {
             </motion.div>
           )}
         </section>
-      </div>
+      </AdaptiveNavigation>
 
       <AnimatePresence>
         {showAnalysis && currentAnalysis && (
@@ -602,6 +566,7 @@ export default function LearningHub() {
                 </div>
                 <button
                   onClick={() => setShowAnalysis(false)}
+                  aria-label="关闭例题解析"
                   className="w-8 h-8 rounded-full bg-ink-100 hover:bg-ink-200 flex items-center justify-center transition"
                 >
                   <X size={16} />
@@ -613,7 +578,7 @@ export default function LearningHub() {
                   <div className="text-xs font-bold text-mission-600 mb-2 flex items-center gap-1">
                     <HelpCircle size={14} /> 题目
                   </div>
-                  <p className="text-sm text-ink-800 leading-relaxed">{currentAnalysis.question}</p>
+                  <p className="text-sm text-ink-800 leading-relaxed whitespace-pre-line">{currentAnalysis.question}</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-gradient-to-br from-growth-50/60 to-green-50/40 border border-growth-100">
@@ -623,14 +588,14 @@ export default function LearningHub() {
                   <p className="text-sm text-ink-800 leading-relaxed">{currentAnalysis.answer}</p>
                 </div>
 
-                <div className="p-5 rounded-xl bg-white border border-ink-100">
+                {currentAnalysis.analysis && <div className="p-5 rounded-xl bg-white border border-ink-100">
                   <div className="text-xs font-bold text-mission-600 mb-3 flex items-center gap-1">
                     <Lightbulb size={14} /> 详细解析
                   </div>
                   <div className="text-sm text-ink-700 leading-relaxed whitespace-pre-line">
                     {currentAnalysis.analysis}
                   </div>
-                </div>
+                </div>}
               </div>
 
               <div className="flex items-center justify-end gap-3 p-5 border-t border-ink-100/50">

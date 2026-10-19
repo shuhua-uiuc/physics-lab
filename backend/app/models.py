@@ -1,6 +1,6 @@
 """SQLAlchemy 数据模型。
 
-字段命名尽量对齐前端 TypeScript 类型（src/data/mockData.ts），
+字段命名尽量对齐前端 TypeScript 类型（src/types/domain.ts），
 对于数组 / 嵌套对象采用 JSON 列存储，保证前后端数据结构一致、迁移零损耗。
 """
 
@@ -66,6 +66,24 @@ class User(Base):
     personal_coins: Mapped[int] = mapped_column(Integer, default=0)
 
     group: Mapped["Group | None"] = relationship(back_populates="users")
+
+
+class CoinTransferRequest(Base):
+    """待审核转账独立保存；只有审核通过才写入资金流水。"""
+
+    __tablename__ = "coin_transfer_requests"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    target_group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    requested_by: Mapped[str] = mapped_column(String)
+    amount: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    reviewed_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
 
 
 class CoinTransaction(Base):
@@ -192,6 +210,8 @@ class ShowcaseItem(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     cover_image: Mapped[str] = mapped_column(String, default="")
     group_id: Mapped[str] = mapped_column(String, index=True)
+    author_user_id: Mapped[str] = mapped_column(String, default="")
+    demo_kind: Mapped[str] = mapped_column(String, default="")
     description: Mapped[str] = mapped_column(Text, default="")
     loves: Mapped[int] = mapped_column(Integer, default=0)
     loved_by: Mapped[list] = mapped_column(JSON, default=list)
@@ -204,6 +224,24 @@ class ShowcaseItem(Base):
     # 作品分类（展览馆顶部的筛选 tab）。上传表单一直让学生选，但从前端到模型都没有这个字段，
     # 选了等于白选、tab 也永远筛不出东西。存量作品回填为 photo。
     category: Mapped[str] = mapped_column(String, default="photo", index=True)
+
+
+class SafetyExamAttempt(Base):
+    """服务端保存题目快照与判分状态，客户端只收到无答案的题目。"""
+
+    __tablename__ = "safety_exam_attempts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    category: Mapped[str] = mapped_column(String)
+    assignment_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    questions: Mapped[list] = mapped_column(JSON, default=list)
+    pass_score: Mapped[int] = mapped_column(Integer, default=80)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    graded: Mapped[bool] = mapped_column(Boolean, default=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ClassMeta(Base):
@@ -265,4 +303,53 @@ class SafetyAssignment(Base):
     class_id: Mapped[str | None] = mapped_column(ForeignKey("classes.id"), index=True, nullable=True)
     group_id: Mapped[str | None] = mapped_column(ForeignKey("groups.id"), index=True, nullable=True)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class ReviewQuestion(Base):
+    """投稿审核记录；新增独立表，保留现有题库和历史成绩。"""
+    __tablename__ = 'review_questions'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    submitted_by: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class NfcDevice(Base):
+    __tablename__ = "nfc_devices"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    allowed_class_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class NfcCard(Base):
+    __tablename__ = "nfc_cards"
+
+    # HMAC index only: do not store the raw UID.
+    uid_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    uid_mask: Mapped[str] = mapped_column(String, nullable=False)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable unique key enforces at most one active card per student in the DB.
+    active_user_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class NfcAdminAudit(Base):
+    __tablename__ = "nfc_admin_audit"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    actor_id: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    target_id: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class NfcInventory(Base):
+    __tablename__ = "nfc_inventory"
+    uid_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    uid_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
